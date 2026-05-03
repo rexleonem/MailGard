@@ -1,0 +1,69 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum AccountStatus {
+  ACTIVE
+  PAUSED
+  RISK_BLOCKED
+}
+
+model Account {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  smtpHost     String
+  smtpPort     Int
+  password     String        // Encrypted
+  domain       String
+  status       AccountStatus @default(ACTIVE)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  diagnostics  Diagnostic[]
+  warmupState  WarmupState?
+  emailLogs    EmailLog[]
+}
+
+model Diagnostic {
+  id        String   @id @default(cuid())
+  accountId String
+  account   Account  @relation(fields: [accountId], references: [id])
+  spf       Boolean
+  dkim      Boolean
+  dmarc     Boolean
+  ipScore   Int
+  rawData   Json?
+  createdAt DateTime @default(now())
+}
+
+model WarmupState {
+  id          String   @id @default(cuid())
+  accountId   String   @unique
+  account     Account  @relation(fields: [accountId], references: [id])
+  dailyLimit  Int      @default(5)
+  currentCount Int     @default(0)
+  dayNumber   Int      @default(1)
+  lastSentAt  DateTime?
+  updatedAt   DateTime @updatedAt
+}
+
+enum LogStatus {
+  SENT
+  FAILED
+  BOUNCED
+}
+
+model EmailLog {
+  id          String    @id @default(cuid())
+  accountId   String
+  account     Account   @relation(fields: [accountId], references: [id])
+  recipient   String
+  subject     String
+  status      LogStatus
+  error       String?
+  aiDecision  Json?
+  createdAt   DateTime  @default(now())
+}
