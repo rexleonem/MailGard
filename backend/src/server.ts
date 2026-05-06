@@ -1,16 +1,16 @@
+import { config } from 'dotenv';
+config();
+
 import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
-import { config } from 'dotenv';
 import prisma from './lib/prisma';
 import './workers/warmupWorker';
 
 import accountRoutes from './routes/accountRoutes';
 import authRoutes from './routes/authRoutes';
 import { authMiddleware } from './middleware/authMiddleware';
-
-config();
 
 const app = express();
 const port = process.env.PORT || 4000;

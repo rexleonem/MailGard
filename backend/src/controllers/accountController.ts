@@ -79,7 +79,7 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
 export const getAccountDetail = async (req: AuthRequest, res: Response) => {
     try {
         const account = await prisma.account.findFirst({
-            where: { id: req.params.id, userId: req.userId },
+            where: { id: req.params.id as string, userId: req.userId },
             include: {
                 diagnostics: { orderBy: { createdAt: 'desc' } },
                 warmupState: true,
@@ -97,7 +97,7 @@ export const triggerWarmup = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const account = await prisma.account.findFirst({
-            where: { id, userId: req.userId }
+            where: { id: id as string, userId: req.userId }
         });
         
         if (!account) return res.status(404).json({ error: 'Account not found' });

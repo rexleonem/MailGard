@@ -20,6 +20,7 @@ export const register = async (req: Request, res: Response) => {
         const token = generateToken(user.id);
         res.status(201).json({ token, user: { id: user.id, email: user.email, name: user.name } });
     } catch (error) {
+        console.error('Registration error:', error);
         res.status(500).json({ error: 'Registration failed' });
     }
 };
@@ -36,6 +37,7 @@ export const login = async (req: Request, res: Response) => {
         const token = generateToken(user.id);
         res.json({ token, user: { id: user.id, email: user.email, name: user.name } });
     } catch (error) {
+        console.error('Login error:', error);
         res.status(500).json({ error: 'Login failed' });
     }
 };
@@ -48,6 +50,7 @@ export const me = async (req: any, res: Response) => {
         });
         res.json(user);
     } catch (error) {
+        console.error('Me error:', error);
         res.status(500).json({ error: 'Failed to fetch user' });
     }
 };
