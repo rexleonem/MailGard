@@ -1,175 +1,206 @@
-import React from 'react';
-import { DNSStatusCard } from '@/components/DNSStatusCard';
-import { StatCard } from '@/components/StatCard';
-import { Shield, Activity, BarChart3, Clock, AlertTriangle, ArrowLeft } from 'lucide-react';
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
+import api from '@/lib/api';
+import { 
+    Activity, Shield, ShieldCheck, ShieldAlert, 
+    ArrowLeft, History, Cpu, Mail, ExternalLink, RefreshCw 
+} from 'lucide-react';
 import Link from 'next/link';
 
-export default function DomainDetailPage({ params }: { params: { id: string } }) {
-  // Mock data for now
-  const domain = {
-    email: 'info@cryptofy.digital',
-    domain: 'cryptofy.digital',
-    status: 'ACTIVE',
-    healthScore: 88,
-    diagnostics: {
-        spf: true,
-        dkim: true,
-        dmarc: false,
-        ipScore: 12
-    },
-    warmup: {
-        currentCount: 8,
-        dailyLimit: 10,
-        dayNumber: 5
-    }
-  };
+export default function DomainDetail() {
+    const { id } = useParams();
+    const [data, setData] = useState<any>(null);
+    const [loading, setLoading] = useState(true);
+    const [triggering, setTriggering] = useState(false);
 
-  return (
-    <div className="max-w-6xl mx-auto space-y-8">
-      <Link href="/" className="flex items-center text-slate-400 hover:text-white transition-colors">
-        <ArrowLeft size={16} className="mr-2" />
-        Back to Dashboard
-      </Link>
+    useEffect(() => {
+        api.get(`/accounts/${id}`)
+            .then(res => setData(res.data))
+            .finally(() => setLoading(false));
+    }, [id]);
 
-      <div className="flex justify-between items-end">
-        <div>
-          <h1 className="text-3xl font-bold text-white">{domain.email}</h1>
-          <p className="text-slate-400 mt-1">Status: <span className="text-emerald-500 font-semibold">{domain.status}</span></p>
-        </div>
-        <div className="flex space-x-4">
-            <button className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-lg transition-colors border border-slate-700">
-                Run Diagnostic
-            </button>
-            <button className="px-6 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg transition-colors">
-                Pause Warming
-            </button>
-        </div>
-      </div>
+    const startWarmup = async () => {
+        setTriggering(true);
+        try {
+            await api.post(`/accounts/${id}/warmup`);
+            alert('Warm-up job scheduled!');
+        } catch (err) {
+            alert('Failed to schedule warm-up');
+        }
+        setTriggering(false);
+    };
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-        {/* Health Score Gauge */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 flex flex-col items-center justify-center text-center">
-            <div className="relative w-40 h-40 flex items-center justify-center">
-                <svg className="w-full h-full transform -rotate-90">
-                    <circle 
-                        cx="80" cy="80" r="70" 
-                        stroke="currentColor" strokeWidth="12" fill="transparent" 
-                        className="text-slate-800" 
-                    />
-                    <circle 
-                        cx="80" cy="80" r="70" 
-                        stroke="currentColor" strokeWidth="12" fill="transparent" 
-                        strokeDasharray={440}
-                        strokeDashoffset={440 - (440 * domain.healthScore) / 100}
-                        className="text-blue-500 transition-all duration-1000" 
-                    />
-                </svg>
-                <div className="absolute inset-0 flex flex-col items-center justify-center">
-                    <span className="text-4xl font-bold text-white">{domain.healthScore}%</span>
-                    <span className="text-xs text-slate-500 uppercase tracking-widest font-bold">Health Score</span>
-                </div>
-            </div>
-            <p className="mt-6 text-sm text-slate-400">
-                Excellent reputation. Domain is safe for standard operations.
-            </p>
-        </div>
+    if (loading) return <div className="flex items-center justify-center h-screen bg-slate-950 text-white">Loading...</div>;
+    if (!data) return <div className="flex items-center justify-center h-screen bg-slate-950 text-white">Not found</div>;
 
-        {/* DNS Status */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
-            <h3 className="text-lg font-bold text-white flex items-center">
-                <Shield size={20} className="mr-2 text-blue-500" />
-                DNS Diagnostics
-            </h3>
-            <DNSStatusCard label="SPF Record" status={domain.diagnostics.spf} description="v=spf1 include:spf.cpanel.net ..." />
-            <DNSStatusCard label="DKIM Record" status={domain.diagnostics.dkim} description="default._domainkey.cryptofy.digital" />
-            <DNSStatusCard label="DMARC Record" status={domain.diagnostics.dmarc} description="Policy not found" />
-            
-            <div className="pt-2">
-                <div className="flex justify-between items-center p-3 bg-slate-800/30 rounded border border-slate-800">
-                    <span className="text-sm text-slate-400">IP Reputation Score</span>
-                    <span className="text-sm font-bold text-emerald-400">{domain.diagnostics.ipScore}/100</span>
-                </div>
-            </div>
-        </div>
+    const latestDiag = data.diagnostics[0] || {};
+    const aiData = latestDiag.rawData || {};
 
-        {/* Warm-up Status */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-6">
-            <h3 className="text-lg font-bold text-white flex items-center">
-                <Activity size={20} className="mr-2 text-amber-500" />
-                Warm-up Progress
-            </h3>
-            
-            <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                    <span className="text-slate-400">Daily Progress</span>
-                    <span className="text-white font-bold">{domain.warmup.currentCount} / {domain.warmup.dailyLimit}</span>
-                </div>
-                <div className="w-full bg-slate-800 h-3 rounded-full overflow-hidden">
-                    <div 
-                        className="bg-amber-500 h-full transition-all duration-1000" 
-                        style={{ width: `${(domain.warmup.currentCount / domain.warmup.dailyLimit) * 100}%` }}
-                    ></div>
-                </div>
-            </div>
+    return (
+        <div className="max-w-6xl mx-auto space-y-8">
+            <Link href="/" className="flex items-center space-x-2 text-slate-500 hover:text-white transition-colors group">
+                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                <span>Back to Dashboard</span>
+            </Link>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div className="p-3 bg-slate-800/30 rounded border border-slate-800">
-                    <p className="text-xs text-slate-500 uppercase tracking-wider">Day Number</p>
-                    <p className="text-lg font-bold text-white">{domain.warmup.dayNumber}</p>
-                </div>
-                <div className="p-3 bg-slate-800/30 rounded border border-slate-800">
-                    <p className="text-xs text-slate-500 uppercase tracking-wider">Send Interval</p>
-                    <p className="text-lg font-bold text-white">~45 mins</p>
-                </div>
-            </div>
-
-            <div className="p-4 bg-amber-500/5 border border-amber-500/20 rounded-lg flex items-start">
-                <Clock size={16} className="text-amber-500 mr-3 mt-1 shrink-0" />
-                <p className="text-xs text-slate-400">
-                    Gradual ramp-up active. AI has set today's limit based on historical deliverability data.
-                </p>
-            </div>
-        </div>
-      </div>
-
-      {/* AI Reasoning Section */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-8">
-        <h3 className="text-xl font-bold text-white mb-6 flex items-center">
-            <Shield size={24} className="mr-3 text-indigo-500" />
-            Gemini AI Risk Assessment
-        </h3>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-            <div className="space-y-4">
-                <div className="p-5 bg-slate-800/30 border border-slate-700 rounded-lg">
-                    <h4 className="text-sm font-bold text-slate-300 mb-2 uppercase tracking-widest">Reasoning</h4>
-                    <p className="text-slate-400 text-sm leading-relaxed">
-                        "The domain has strong SPF and DKIM signatures, which are essential for authentication. However, the absence of a DMARC policy represents a minor risk for spoofing. The IP reputation is excellent (12/100), and historical engagement is high. Recommending a safe increase in daily volume."
+            <div className="flex justify-between items-start">
+                <div>
+                    <div className="flex items-center space-x-3">
+                        <h1 className="text-4xl font-bold text-white tracking-tight">{data.domain}</h1>
+                        <StatusBadge status={data.status} />
+                    </div>
+                    <p className="text-slate-400 mt-2 flex items-center space-x-2">
+                        <Mail size={16} />
+                        <span>{data.email}</span>
                     </p>
                 </div>
-                <div className="flex space-x-4">
-                    <div className="flex-1 p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                        <span className="text-xs text-emerald-500 font-bold uppercase tracking-wider">Action Plan</span>
-                        <p className="text-white font-bold mt-1 uppercase">PROCEED</p>
+                <button 
+                    onClick={startWarmup}
+                    disabled={triggering || data.status !== 'ACTIVE'}
+                    className="flex items-center space-x-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 text-white px-6 py-3 rounded-xl font-semibold transition-all shadow-xl shadow-blue-900/40"
+                >
+                    {triggering ? <RefreshCw className="animate-spin" size={20} /> : <Activity size={20} />}
+                    <span>Trigger Warm-up Job</span>
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* Left Column: Diagnostics & AI */}
+                <div className="lg:col-span-2 space-y-8">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-2xl">
+                        <div className="p-6 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+                            <h2 className="text-xl font-semibold text-white flex items-center space-x-2">
+                                <Cpu size={22} className="text-blue-500" />
+                                <span>AI Risk Intelligence</span>
+                            </h2>
+                            <span className="text-xs text-slate-500 font-mono">MODEL: GEMINI-1.5-FLASH</span>
+                        </div>
+                        <div className="p-8">
+                            <div className="flex items-center space-x-8">
+                                <div className="relative w-32 h-32">
+                                    <svg className="w-full h-full transform -rotate-90">
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-slate-800" />
+                                        <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" 
+                                            strokeDasharray={364.4} strokeDashoffset={364.4 - (364.4 * (aiData.score || 0)) / 100}
+                                            className={`${(aiData.score || 0) > 70 ? 'text-emerald-500' : 'text-rose-500'} transition-all duration-1000`} 
+                                        />
+                                    </svg>
+                                    <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                        <span className="text-3xl font-black text-white">{aiData.score || '--'}</span>
+                                        <span className="text-[10px] text-slate-500 font-bold tracking-widest uppercase">Score</span>
+                                    </div>
+                                </div>
+                                <div className="flex-1 space-y-2">
+                                    <h3 className="text-2xl font-bold text-white">{aiData.riskLevel} RISK</h3>
+                                    <p className="text-slate-400 text-sm leading-relaxed">{aiData.reason}</p>
+                                    <div className="pt-4">
+                                        <div className="inline-flex items-center space-x-2 bg-slate-950 border border-slate-800 px-4 py-2 rounded-lg">
+                                            <ShieldCheck size={16} className="text-blue-500" />
+                                            <span className="text-sm font-medium text-slate-300">{aiData.recommendation}</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div className="flex-1 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-                        <span className="text-xs text-blue-500 font-bold uppercase tracking-wider">Recommended Limit</span>
-                        <p className="text-white font-bold mt-1">20 emails/day</p>
+
+                    <div className="bg-slate-900/50 border border-slate-800 rounded-2xl p-6">
+                        <h2 className="text-xl font-semibold text-white mb-6 flex items-center space-x-2">
+                            <Shield size={20} className="text-blue-500" />
+                            <span>Protocol Health (DNS)</span>
+                        </h2>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <DnsCard label="SPF" active={latestDiag.spf} description="Sender Policy Framework" />
+                            <DnsCard label="DKIM" active={latestDiag.dkim} description="DomainKeys Identified Mail" />
+                            <DnsCard label="DMARC" active={latestDiag.dmarc} description="Domain Message Authentication" />
+                        </div>
+                    </div>
+
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
+                        <div className="p-6 border-b border-slate-800 bg-slate-900/50 flex items-center justify-between">
+                            <h2 className="text-xl font-semibold text-white flex items-center space-x-2">
+                                <History size={20} className="text-blue-500" />
+                                <span>Recent Logs</span>
+                            </h2>
+                        </div>
+                        <div className="divide-y divide-slate-800">
+                            {data.emailLogs.map((log: any) => (
+                                <div key={log.id} className="p-4 flex items-center justify-between hover:bg-slate-800/30 transition-colors">
+                                    <div className="flex items-center space-x-4">
+                                        <div className={`w-2 h-2 rounded-full ${log.status === 'SENT' ? 'bg-emerald-500' : 'bg-rose-500'}`} />
+                                        <div className="flex flex-col">
+                                            <span className="text-white text-sm font-medium">{log.recipient}</span>
+                                            <span className="text-xs text-slate-500">{new Date(log.createdAt).toLocaleString()}</span>
+                                        </div>
+                                    </div>
+                                    <span className={`text-xs font-mono px-2 py-1 rounded bg-slate-950 border border-slate-800 ${log.status === 'SENT' ? 'text-emerald-500' : 'text-rose-500'}`}>
+                                        {log.status}
+                                    </span>
+                                </div>
+                            ))}
+                            {data.emailLogs.length === 0 && (
+                                <div className="p-12 text-center text-slate-500 italic">No activity logs recorded yet.</div>
+                            )}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Right Column: Warm-up State */}
+                <div className="space-y-8">
+                    <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-2xl">
+                        <h2 className="text-xl font-semibold text-white mb-6 flex items-center space-x-2">
+                            <Activity size={20} className="text-blue-500" />
+                            <span>Warm-up Engine</span>
+                        </h2>
+                        <div className="space-y-6">
+                            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Current Day</p>
+                                <p className="text-3xl font-black text-white mt-1">Day {data.warmupState?.dayNumber || 1}</p>
+                            </div>
+                            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Daily Limit</p>
+                                <p className="text-3xl font-black text-white mt-1">{data.warmupState?.dailyLimit || 5}</p>
+                            </div>
+                            <div className="p-4 bg-slate-950 border border-slate-800 rounded-xl">
+                                <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Sent Today</p>
+                                <p className="text-3xl font-black text-blue-500 mt-1">{data.warmupState?.currentCount || 0}</p>
+                            </div>
+                            <div className="pt-4 border-t border-slate-800">
+                                <p className="text-xs text-slate-500 leading-relaxed italic">
+                                    MailGard automatically scales sending volume based on AI health scores to prevent IP blacklisting.
+                                </p>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
-            <div className="bg-slate-950/50 rounded-lg p-6 border border-slate-800 font-mono text-xs overflow-auto">
-                <pre className="text-slate-500">
-                    {JSON.stringify({
-                        risk: "SAFE",
-                        score: 88,
-                        recommended_daily_limit: 20,
-                        action: "PROCEED",
-                        reason: "Strong authentication and clean IP history."
-                    }, null, 2)}
-                </pre>
-            </div>
         </div>
-      </div>
-    </div>
-  );
+    );
+}
+
+function StatusBadge({ status }: { status: string }) {
+    const colors: any = {
+        ACTIVE: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+        PAUSED: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+        RISK_BLOCKED: 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+    };
+    return (
+        <span className={`px-3 py-1 rounded-full text-xs font-black tracking-widest border ${colors[status]}`}>
+            {status.replace('_', ' ')}
+        </span>
+    );
+}
+
+function DnsCard({ label, active, description }: { label: string, active: boolean, description: string }) {
+    return (
+        <div className={`p-4 rounded-xl border transition-all ${active ? 'bg-emerald-500/5 border-emerald-500/20' : 'bg-slate-950 border-slate-800 opacity-60'}`}>
+            <div className="flex items-center justify-between mb-2">
+                <span className="text-white font-bold">{label}</span>
+                {active ? <ShieldCheck size={18} className="text-emerald-500" /> : <ShieldAlert size={18} className="text-slate-600" />}
+            </div>
+            <p className="text-[10px] text-slate-500 uppercase font-bold tracking-wider">{description}</p>
+        </div>
+    );
 }

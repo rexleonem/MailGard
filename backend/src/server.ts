@@ -4,8 +4,11 @@ import helmet from 'helmet';
 import compression from 'compression';
 import { config } from 'dotenv';
 import prisma from './lib/prisma';
+import './workers/warmupWorker';
 
 import accountRoutes from './routes/accountRoutes';
+import authRoutes from './routes/authRoutes';
+import { authMiddleware } from './middleware/authMiddleware';
 
 config();
 
@@ -17,7 +20,8 @@ app.use(cors());
 app.use(compression());
 app.use(express.json());
 
-app.use('/api/accounts', accountRoutes);
+app.use('/api/auth', authRoutes);
+app.use('/api/accounts', authMiddleware, accountRoutes);
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });

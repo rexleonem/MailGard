@@ -1,112 +1,140 @@
-import { StatCard } from "@/components/StatCard";
-import { Mail, ShieldCheck, Zap, AlertTriangle } from "lucide-react";
+'use client';
 
-export default function Home() {
-  return (
-    <div className="max-w-7xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white">System Overview</h1>
-        <p className="text-slate-400 mt-2">Real-time deliverability metrics and risk status across all monitored domains.</p>
-      </div>
+import React, { useEffect, useState } from 'react';
+import api from '@/lib/api';
+import { Activity, Shield, AlertTriangle, Plus, Search, ChevronRight } from 'lucide-react';
+import Link from 'next/link';
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          title="Total Domains" 
-          value="12" 
-          icon={<Mail size={24} />} 
-          color="blue"
-        />
-        <StatCard 
-          title="Active Warm-up" 
-          value="8" 
-          icon={<Zap size={24} />} 
-          color="amber"
-          description="+2 in last 24h"
-        />
-        <StatCard 
-          title="Avg Health Score" 
-          value="94%" 
-          icon={<ShieldCheck size={24} />} 
-          color="emerald"
-        />
-        <StatCard 
-          title="Risk Alerts" 
-          value="1" 
-          icon={<AlertTriangle size={24} />} 
-          color="rose"
-          description="Action required"
-        />
-      </div>
+export default function Dashboard() {
+    const [accounts, setAccounts] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h2 className="text-xl font-bold text-white">Recent Activity</h2>
-            <button className="text-sm text-blue-500 hover:underline">View all</button>
-          </div>
-          <div className="space-y-4">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="flex items-center justify-between p-4 bg-slate-800/30 rounded-lg border border-slate-800/50">
-                <div className="flex items-center space-x-4">
-                  <div className="w-10 h-10 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
-                    <Mail size={20} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-white">Email sent via info@cryptofy.com</p>
-                    <p className="text-xs text-slate-500">Recipient: user_{i}@gmail.com • 5m ago</p>
-                  </div>
+    useEffect(() => {
+        api.get('/accounts')
+            .then(res => setAccounts(res.data))
+            .finally(() => setLoading(false));
+    }, []);
+
+    if (loading) return <div className="flex items-center justify-center h-screen bg-slate-950 text-white">Loading...</div>;
+
+    return (
+        <div className="space-y-8">
+            <div className="flex justify-between items-center">
+                <div>
+                    <h1 className="text-3xl font-bold text-white">Deliverability Overview</h1>
+                    <p className="text-slate-400 mt-1">Monitor and manage your SMTP sending reputation.</p>
                 </div>
-                <div className="text-xs font-bold text-emerald-500 bg-emerald-500/10 px-2 py-1 rounded">
-                  SUCCESS
+                <button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-blue-900/20">
+                    <Plus size={20} />
+                    <span>Add Domain</span>
+                </button>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <StatCard icon={<Shield className="text-emerald-500" />} label="Healthy Domains" value={accounts.filter(a => a.status === 'ACTIVE').length} color="emerald" />
+                <StatCard icon={<AlertTriangle className="text-amber-500" />} label="At Risk" value={accounts.filter(a => a.status === 'RISK_BLOCKED').length} color="amber" />
+                <StatCard icon={<Activity className="text-blue-500" />} label="Warm-up Active" value={accounts.filter(a => a.warmupState?.dayNumber > 1).length} color="blue" />
+            </div>
+
+            <div className="bg-slate-900/50 border border-slate-800 rounded-xl overflow-hidden backdrop-blur-sm">
+                <div className="p-6 border-b border-slate-800 flex justify-between items-center">
+                    <h2 className="text-xl font-semibold text-white">Connected Domains</h2>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" size={18} />
+                        <input 
+                            type="text" 
+                            placeholder="Search domains..." 
+                            className="bg-slate-950 border border-slate-800 rounded-lg pl-10 pr-4 py-2 text-sm text-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-600 w-64"
+                        />
+                    </div>
                 </div>
-              </div>
-            ))}
-          </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                        <thead>
+                            <tr className="text-slate-500 text-sm uppercase tracking-wider">
+                                <th className="px-6 py-4 font-medium">Domain</th>
+                                <th className="px-6 py-4 font-medium">Status</th>
+                                <th className="px-6 py-4 font-medium">Score</th>
+                                <th className="px-6 py-4 font-medium">DNS Health</th>
+                                <th className="px-6 py-4 font-medium"></th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800">
+                            {accounts.map((account) => (
+                                <tr key={account.id} className="hover:bg-slate-800/30 transition-colors cursor-pointer group">
+                                    <td className="px-6 py-4">
+                                        <div className="flex flex-col">
+                                            <span className="text-white font-medium">{account.domain}</span>
+                                            <span className="text-xs text-slate-500">{account.email}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <StatusBadge status={account.status} />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center space-x-2">
+                                            <div className="w-12 h-2 bg-slate-800 rounded-full overflow-hidden">
+                                                <div 
+                                                    className={`h-full ${account.diagnostics[0]?.ipScore > 70 ? 'bg-emerald-500' : 'bg-amber-500'}`} 
+                                                    style={{ width: `${account.diagnostics[0]?.ipScore || 0}%` }}
+                                                />
+                                            </div>
+                                            <span className="text-sm font-medium text-slate-300">{account.diagnostics[0]?.ipScore || '--'}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex space-x-1">
+                                            <DnsDot active={account.diagnostics[0]?.spf} label="SPF" />
+                                            <DnsDot active={account.diagnostics[0]?.dkim} label="DKIM" />
+                                            <DnsDot active={account.diagnostics[0]?.dmarc} label="DMARC" />
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <Link href={`/domains/${account.id}`}>
+                                            <ChevronRight className="text-slate-600 group-hover:text-blue-500 transition-colors inline-block" />
+                                        </Link>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
         </div>
+    );
+}
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-xl font-bold text-white mb-6">Risk Distribution</h2>
-          <div className="space-y-6">
-            <div>
-                <div className="flex justify-between text-sm mb-2">
-                    <span className="text-emerald-400">Safe Domains</span>
-                    <span className="text-white">10</span>
+function StatCard({ icon, label, value, color }: any) {
+    return (
+        <div className="bg-slate-900 border border-slate-800 p-6 rounded-xl shadow-xl">
+            <div className="flex items-center space-x-4">
+                <div className={`p-3 rounded-lg bg-${color}-500/10`}>
+                    {icon}
                 </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-emerald-500 h-full" style={{ width: '83%' }}></div>
-                </div>
-            </div>
-            <div>
-                <div className="flex justify-between text-sm mb-2">
-                    <span className="text-amber-400">Caution Required</span>
-                    <span className="text-white">1</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-amber-500 h-full" style={{ width: '8%' }}></div>
+                <div>
+                    <p className="text-slate-500 text-sm font-medium uppercase tracking-wider">{label}</p>
+                    <p className="text-2xl font-bold text-white mt-1">{value}</p>
                 </div>
             </div>
-            <div>
-                <div className="flex justify-between text-sm mb-2">
-                    <span className="text-rose-400">High Risk / Blocked</span>
-                    <span className="text-white">1</span>
-                </div>
-                <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                    <div className="bg-rose-500 h-full" style={{ width: '8%' }}></div>
-                </div>
-            </div>
-          </div>
-          
-          <div className="mt-8 p-4 bg-blue-500/5 border border-blue-500/20 rounded-lg">
-            <h4 className="text-sm font-bold text-blue-400 mb-2 flex items-center">
-                <ShieldCheck size={16} className="mr-2" />
-                AI Recommendation
-            </h4>
-            <p className="text-xs text-slate-400 leading-relaxed">
-                System is performing optimally. We recommend increasing the daily limit for "cryptofy.com" by 5% as engagement rates are stable.
-            </p>
-          </div>
         </div>
-      </div>
-    </div>
-  );
+    );
+}
+
+function StatusBadge({ status }: { status: string }) {
+    const colors: any = {
+        ACTIVE: 'bg-emerald-500/10 text-emerald-500 border-emerald-500/20',
+        PAUSED: 'bg-slate-500/10 text-slate-500 border-slate-500/20',
+        RISK_BLOCKED: 'bg-rose-500/10 text-rose-500 border-rose-500/20'
+    };
+    return (
+        <span className={`px-2 py-1 rounded-md text-xs font-bold border ${colors[status]}`}>
+            {status.replace('_', ' ')}
+        </span>
+    );
+}
+
+function DnsDot({ active, label }: { active: boolean, label: string }) {
+    return (
+        <div className={`w-2 h-2 rounded-full ${active ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-slate-700'}`} title={label} />
+    );
 }

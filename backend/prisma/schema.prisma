@@ -12,8 +12,20 @@ enum AccountStatus {
   RISK_BLOCKED
 }
 
+model User {
+  id        String    @id @default(cuid())
+  email     String    @unique
+  password  String
+  name      String?
+  accounts  Account[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
 model Account {
   id           String        @id @default(cuid())
+  userId       String
+  user         User          @relation(fields: [userId], references: [id])
   email        String        @unique
   smtpHost     String
   smtpPort     Int

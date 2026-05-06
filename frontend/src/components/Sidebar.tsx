@@ -1,6 +1,6 @@
 import React from 'react';
 import Link from 'next/link';
-import { LayoutDashboard, Globe, Activity, ShieldAlert, LogSync, Settings } from 'lucide-react';
+import { LayoutDashboard, Globe, Activity, ShieldAlert, FileText, Settings } from 'lucide-react';
 
 export const Sidebar = () => {
     const navItems = [
@@ -8,7 +8,7 @@ export const Sidebar = () => {
         { icon: <Globe size={20} />, label: 'Domains', href: '/domains' },
         { icon: <Activity size={20} />, label: 'Warm-up', href: '/warmup' },
         { icon: <ShieldAlert size={20} />, label: 'Risk Analysis', href: '/risk' },
-        { icon: <LogSync size={20} />, label: 'Logs', href: '/logs' },
+        { icon: <FileText size={20} />, label: 'Logs', href: '/logs' },
     ];
 
     return (
