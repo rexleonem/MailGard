@@ -8,7 +8,9 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "prisma:generate": "prisma generate",
-    "prisma:studio": "prisma studio"
+    "prisma:studio": "prisma studio",
+    "cron:reset": "ts-node src/scripts/cron.ts reset",
+    "cron:schedule": "ts-node src/scripts/cron.ts schedule"
   },
   "keywords": [],
   "author": "",
