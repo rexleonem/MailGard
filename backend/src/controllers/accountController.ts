@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import nodemailer from 'nodemailer';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { encrypt } from '../lib/encryption';
@@ -10,8 +11,50 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
     try {
         const { email, smtpHost, smtpPort, password } = req.body;
         const domain = email.split('@')[1];
+        const port = parseInt(smtpPort);
 
-        // Encrypt password
+        // STEP 1: SMTP Verification Gate (MANDATORY)
+        const transporter = nodemailer.createTransport({
+            host: smtpHost,
+            port: port,
+            secure: port === 465,
+            auth: {
+                user: email,
+                pass: password
+            },
+            connectTimeout: 10000 
+        } as any);
+
+        try {
+            await transporter.verify();
+        } catch (smtpError: any) {
+            console.error('SMTP Verification Failed:', smtpError);
+            
+            let errorType = 'UNKNOWN_ERROR';
+            let message = 'Failed to verify SMTP credentials';
+
+            if (smtpError.code === 'EAUTH') {
+                errorType = 'AUTH_FAILED';
+                message = 'Invalid SMTP credentials. Please check your email and password.';
+            } else if (smtpError.code === 'ETIMEDOUT' || smtpError.code === 'ECONNREFUSED') {
+                errorType = 'CONNECTION_TIMEOUT';
+                message = 'Could not connect to the SMTP server. Check host and port.';
+            } else if (smtpError.message?.includes('SSL') || smtpError.message?.includes('TLS')) {
+                errorType = 'SSL_ERROR';
+                message = 'SSL/TLS handshake failed. Verify port and security settings.';
+            } else if (smtpError.code === 'ENOTFOUND') {
+                errorType = 'UNKNOWN_HOST';
+                message = 'SMTP host not found. Please verify the server address.';
+            }
+
+            return res.status(400).json({ 
+                error: message, 
+                code: errorType,
+                details: smtpError.message 
+            });
+        }
+
+        // STEP 2: Encryption and Storage (ONLY ON SUCCESS)
         const encryptedPassword = JSON.stringify(encrypt(password));
 
         const account = await prisma.account.create({
@@ -19,20 +62,20 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
                 userId: req.userId!,
                 email,
                 smtpHost,
-                smtpPort: parseInt(smtpPort),
+                smtpPort: port,
                 password: encryptedPassword,
                 domain,
+                status: 'ACTIVE',
                 warmupState: {
-                    create: {} // Default values
+                    create: {} 
                 }
             }
         });
 
-        // Run initial diagnostics
+        // Run initial diagnostics in background
         const spf = await checkSPF(domain);
         const dkim = await checkDKIM(domain);
         const dmarc = await checkDMARC(domain);
-
         const aiResult = await analyzeRisk({ domain, spf, dkim, dmarc });
 
         await prisma.diagnostic.create({
@@ -46,18 +89,10 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
             }
         });
 
-        // If high risk, block
-        if (aiResult?.riskLevel === 'CRITICAL' || aiResult?.riskLevel === 'HIGH') {
-            await prisma.account.update({
-                where: { id: account.id },
-                data: { status: 'RISK_BLOCKED' }
-            });
-        }
-
         res.status(201).json(account);
     } catch (error) {
         console.error('Account creation failed:', error);
-        res.status(500).json({ error: 'Failed to create account' });
+        res.status(500).json({ error: 'System error during account creation' });
     }
 };
 
