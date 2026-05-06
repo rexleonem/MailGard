@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import api from '@/lib/api';
 import { 
     Activity, Shield, ShieldCheck, ShieldAlert, 
@@ -11,6 +11,7 @@ import Link from 'next/link';
 
 export default function DomainDetail() {
     const { id } = useParams();
+    const router = useRouter();
     const [data, setData] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [triggering, setTriggering] = useState(false);
@@ -32,6 +33,32 @@ export default function DomainDetail() {
         setTriggering(false);
     };
 
+    const [confirmDelete, setConfirmDelete] = useState(false);
+
+    const toggleStatus = async () => {
+        const newStatus = data.status === 'ACTIVE' ? 'PAUSED' : 'ACTIVE';
+        try {
+            const res = await api.put(`/accounts/${id}`, { status: newStatus });
+            setData({ ...data, status: res.data.status });
+        } catch (err) {
+            alert('Failed to update status');
+        }
+    };
+
+    const deleteAccount = async () => {
+        if (!confirmDelete) {
+            setConfirmDelete(true);
+            return;
+        }
+        try {
+            await api.delete(`/accounts/${id}`);
+            router.push('/');
+        } catch (err) {
+            alert('Failed to delete account');
+            setConfirmDelete(false);
+        }
+    };
+
     if (loading) return <div className="flex items-center justify-center h-screen bg-slate-950 text-white">Loading...</div>;
     if (!data) return <div className="flex items-center justify-center h-screen bg-slate-950 text-white">Not found</div>;
 
@@ -40,10 +67,26 @@ export default function DomainDetail() {
 
     return (
         <div className="max-w-6xl mx-auto space-y-8">
-            <Link href="/" className="flex items-center space-x-2 text-slate-500 hover:text-white transition-colors group">
-                <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
-                <span>Back to Dashboard</span>
-            </Link>
+            <div className="flex justify-between items-center">
+                <Link href="/" className="flex items-center space-x-2 text-slate-500 hover:text-white transition-colors group">
+                    <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                    <span>Back to Dashboard</span>
+                </Link>
+                <div className="flex items-center space-x-4">
+                    <button 
+                        onClick={toggleStatus}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${data.status === 'ACTIVE' ? 'border-amber-500/20 text-amber-500 hover:bg-amber-500/10' : 'border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/10'}`}
+                    >
+                        {data.status === 'ACTIVE' ? 'Pause Warm-up' : 'Resume Warm-up'}
+                    </button>
+                    <button 
+                        onClick={deleteAccount}
+                        className={`px-4 py-2 rounded-lg text-sm font-bold border transition-colors ${confirmDelete ? 'bg-rose-600 text-white border-rose-600' : 'border-rose-500/20 text-rose-500 hover:bg-rose-500/10'}`}
+                    >
+                        {confirmDelete ? 'Click again to Confirm' : 'Delete Domain'}
+                    </button>
+                </div>
+            </div>
 
             <div className="flex justify-between items-start">
                 <div>

@@ -24,10 +24,10 @@ export default function Dashboard() {
                     <h1 className="text-3xl font-bold text-white">Deliverability Overview</h1>
                     <p className="text-slate-400 mt-1">Monitor and manage your SMTP sending reputation.</p>
                 </div>
-                <button className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-blue-900/20">
+                <Link href="/domains/new" className="flex items-center space-x-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg transition-colors shadow-lg shadow-blue-900/20">
                     <Plus size={20} />
                     <span>Add Domain</span>
-                </button>
+                </Link>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

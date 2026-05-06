@@ -42,7 +42,7 @@ model Account {
 model Diagnostic {
   id        String   @id @default(cuid())
   accountId String
-  account   Account  @relation(fields: [accountId], references: [id])
+  account   Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   spf       Boolean
   dkim      Boolean
   dmarc     Boolean
@@ -54,7 +54,7 @@ model Diagnostic {
 model WarmupState {
   id          String   @id @default(cuid())
   accountId   String   @unique
-  account     Account  @relation(fields: [accountId], references: [id])
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   dailyLimit  Int      @default(5)
   currentCount Int     @default(0)
   dayNumber   Int      @default(1)
@@ -71,7 +71,7 @@ enum LogStatus {
 model EmailLog {
   id          String    @id @default(cuid())
   accountId   String
-  account     Account   @relation(fields: [accountId], references: [id])
+  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   recipient   String
   subject     String
   status      LogStatus

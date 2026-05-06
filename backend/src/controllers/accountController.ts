@@ -112,3 +112,35 @@ export const triggerWarmup = async (req: AuthRequest, res: Response) => {
         res.status(500).json({ error: 'Failed to trigger warmup' });
     }
 };
+
+export const deleteAccount = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        await prisma.account.delete({
+            where: { id: id as string, userId: req.userId }
+        });
+        res.json({ message: 'Account deleted successfully' });
+    } catch (error) {
+        console.error('Delete account failed:', error);
+        res.status(500).json({ error: 'Failed to delete account' });
+    }
+};
+
+export const updateAccount = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status, smtpHost, smtpPort } = req.body;
+        
+        const account = await prisma.account.update({
+            where: { id: id as string, userId: req.userId },
+            data: {
+                status,
+                smtpHost,
+                smtpPort: smtpPort ? parseInt(smtpPort) : undefined
+            }
+        });
+        res.json(account);
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to update account' });
+    }
+};
