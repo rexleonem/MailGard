@@ -18,9 +18,11 @@ export function Sidebar() {
         { icon: <PlusCircle size={20} />, label: 'Add Domain', path: '/domains/new', disabled: false },
         { icon: <Send size={20} />, label: 'Manual Test', path: '/test-send', disabled: false },
         { icon: <History size={20} />, label: 'Delivery Logs', path: '/logs', disabled: false },
+        { icon: <ShieldCheck size={20} />, label: 'Warmup Pool', path: '/warmup', disabled: false },
         { icon: <Activity size={20} />, label: 'Intelligence', path: '/monitor', disabled: false },
         { icon: <Settings size={20} />, label: 'Settings', path: '/settings', disabled: false },
     ];
+
 
     const toggleSidebar = () => setIsOpen(!isOpen);
 

@@ -11,7 +11,9 @@ import './workers/mainWorker';
 
 import accountRoutes from './routes/accountRoutes';
 import authRoutes from './routes/authRoutes';
+import warmupRoutes from './routes/warmupRoutes';
 import { authMiddleware } from './middleware/authMiddleware';
+
 
 import rateLimit from 'express-rate-limit';
 
@@ -41,6 +43,8 @@ app.use(globalLimiter);
 
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/accounts', authMiddleware, accountRoutes);
+app.use('/api/warmup', authMiddleware, warmupRoutes);
+
 
 app.get('/health', (req, res) => {
     res.json({ status: 'ok' });
