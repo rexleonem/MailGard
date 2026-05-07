@@ -121,9 +121,17 @@ async function handleEmailExecution(jobData: any, account: any, adaptive: any, j
 
     if (!isTest) {
         const randomMsg = getRandomMessage();
-        recipient = 'warmup@ozgardenz.site';
+        
+        // Fetch a random active recipient from the pool
+        const poolRecipient = await prisma.warmupPool.findFirst({
+            where: { isActive: true },
+            skip: Math.floor(Math.random() * (await prisma.warmupPool.count({ where: { isActive: true } }) || 1))
+        });
+
+        recipient = poolRecipient?.email || 'warmup@ozgardenz.site';
         subject = randomMsg.subject;
         body = randomMsg.body;
+
 
         // Warmup-specific Idempotency
         const lastHourSend = await prisma.emailLog.findFirst({
