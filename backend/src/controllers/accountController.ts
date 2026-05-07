@@ -6,6 +6,8 @@ import { encrypt } from '../lib/encryption';
 import { checkSPF, checkDKIM, checkDMARC } from '../lib/dns';
 import { analyzeRisk } from '../lib/gemini';
 import { addWarmupJob, mailgardQueue } from '../queues/warmupQueue';
+import { logger } from '../lib/logger';
+import { calculateAdaptiveState } from '../lib/trustEngine';
 
 export const createAccount = async (req: AuthRequest, res: Response) => {
     try {
@@ -107,6 +109,14 @@ async function runDiagnostics(accountId: string, domain: string, smtpHost: strin
             systemState: 'ACTIVE' // Contextual
         });
 
+        await logger.log({
+            type: 'AI',
+            severity: aiResult.risk === 'HIGH_RISK' ? 'WARNING' : 'INFO',
+            message: `AI Risk Assessment: ${aiResult.risk} (Score: ${aiResult.score})`,
+            accountId,
+            payload: aiResult
+        });
+
         // 4. SCORING ENGINE (0-100)
         // System baseline score combined with AI score
         let healthScore = aiResult.score;
@@ -148,12 +158,47 @@ async function runDiagnostics(accountId: string, domain: string, smtpHost: strin
             data: { status: finalStatus }
         });
 
+        await logger.log({
+            type: 'DIAGNOSTICS',
+            severity: healthScore < 50 ? 'WARNING' : 'INFO',
+            message: `Diagnostics completed for ${domain}. Score: ${healthScore}`,
+            accountId,
+            payload: { spf, dkim, dmarc, ipScore, healthScore }
+        });
+
         return { healthScore, riskLevel };
     } catch (err) {
         console.error('Diagnostics failed:', err);
         throw err;
     }
 }
+
+export const getSystemEvents = async (req: AuthRequest, res: Response) => {
+    try {
+        const events = await prisma.systemEvent.findMany({
+            where: { userId: req.userId },
+            orderBy: { createdAt: 'desc' },
+            take: 100
+        });
+        res.json(events);
+    } catch (error) {
+        console.error('getSystemEvents failed:', error);
+        res.status(500).json({ error: 'Failed to fetch events' });
+    }
+};
+
+export const getAlerts = async (req: AuthRequest, res: Response) => {
+    try {
+        const alerts = await prisma.alert.findMany({
+            where: { resolved: false },
+            orderBy: { createdAt: 'desc' }
+        });
+        res.json(alerts);
+    } catch (error) {
+        console.error('getAlerts failed:', error);
+        res.status(500).json({ error: 'Failed to fetch alerts' });
+    }
+};
 
 export const getQueueStats = async (req: Request, res: Response) => {
     try {
@@ -172,6 +217,7 @@ export const getQueueStats = async (req: Request, res: Response) => {
             workerStatus: 'ONLINE'
         });
     } catch (error) {
+        console.error('getQueueStats failed:', error);
         res.status(500).json({ error: 'Failed to fetch queue stats' });
     }
 };
@@ -207,6 +253,7 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
         });
         res.json(accounts);
     } catch (error) {
+        console.error('getAccounts failed:', error);
         res.status(500).json({ error: 'Failed to fetch accounts' });
     }
 };
@@ -224,7 +271,6 @@ export const getAccountDetail = async (req: AuthRequest, res: Response) => {
         if (!account) return res.status(404).json({ error: 'Account not found' });
         
         // Calculate adaptive state for the UI
-        const { calculateAdaptiveState } = require('../lib/trustEngine');
         const adaptive = await calculateAdaptiveState(account.id);
         
         res.json({ ...account, adaptive });

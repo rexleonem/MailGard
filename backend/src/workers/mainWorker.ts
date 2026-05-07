@@ -6,6 +6,7 @@ import { decrypt } from '../lib/encryption';
 import { getRandomMessage } from '../lib/messages';
 import { addWarmupJob } from '../queues/warmupQueue';
 import { calculateAdaptiveState, getNaturalDelay } from '../lib/trustEngine';
+import { logger } from '../lib/logger';
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
@@ -47,9 +48,22 @@ async function validateSafety(accountId: string) {
 export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
     const { type, accountId } = job.data;
 
+    await logger.log({
+        type: 'QUEUE',
+        severity: 'INFO',
+        message: `Processing ${type} for ${accountId}`,
+        accountId
+    });
+
     const safety = await validateSafety(accountId);
     if (!safety.safe && type === 'WARM_SEND') {
-        console.warn(`[Adaptive Worker] ${type} blocked for ${accountId}: ${safety.reason}`);
+        await logger.log({
+            type: 'ADAPTIVE',
+            severity: 'WARNING',
+            message: `Warm-up blocked: ${safety.reason}`,
+            accountId,
+            payload: { reason: safety.reason }
+        });
         return;
     }
 
@@ -58,9 +72,21 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
     try {
         if (type === 'WARM_SEND') {
             await handleAdaptiveSend(account!, adaptive!);
+            await logger.log({
+                type: 'SMTP',
+                severity: 'INFO',
+                message: `Successfully sent warm-up email for ${account?.email}`,
+                accountId
+            });
         }
     } catch (error: any) {
-        console.error(`[Adaptive Worker] ${type} failed:`, error.message);
+        await logger.log({
+            type: 'SMTP',
+            severity: 'ERROR',
+            message: `SMTP failed for ${account?.email}: ${error.message}`,
+            accountId,
+            payload: { error: error.message, code: error.code }
+        });
         throw error; // Let BullMQ handle retries with backoff
     }
 }, { connection });

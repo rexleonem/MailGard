@@ -4,19 +4,28 @@ import React, { useEffect, useState } from 'react';
 import api from '@/lib/api';
 import { 
     Activity, ShieldCheck, Zap, AlertCircle, 
-    ArrowLeft, Clock, CheckCircle2, XCircle,
-    Server, Cpu, RefreshCw
+    Clock, CheckCircle2, XCircle,
+    Server, Cpu, RefreshCw, Terminal, 
+    AlertTriangle, Info, Bell
 } from 'lucide-react';
 import Link from 'next/link';
 
 export default function Monitor() {
     const [stats, setStats] = useState<any>(null);
+    const [events, setEvents] = useState<any[]>([]);
+    const [alerts, setAlerts] = useState<any[]>([]);
     const [loading, setLoading] = useState(true);
 
-    const fetchStats = async () => {
+    const fetchData = async () => {
         try {
-            const res = await api.get('/accounts/monitor/stats');
-            setStats(res.data);
+            const [statsRes, eventsRes, alertsRes] = await Promise.all([
+                api.get('/accounts/monitor/stats'),
+                api.get('/accounts/monitor/events'),
+                api.get('/accounts/monitor/alerts')
+            ]);
+            setStats(statsRes.data);
+            setEvents(eventsRes.data);
+            setAlerts(alertsRes.data);
         } catch (err) {
             console.error(err);
         } finally {
@@ -25,8 +34,8 @@ export default function Monitor() {
     };
 
     useEffect(() => {
-        fetchStats();
-        const interval = setInterval(fetchStats, 5000);
+        fetchData();
+        const interval = setInterval(fetchData, 5000);
         return () => clearInterval(interval);
     }, []);
 
@@ -37,17 +46,33 @@ export default function Monitor() {
     );
 
     return (
-        <div className="max-w-5xl mx-auto space-y-8 lg:space-y-12 pb-20">
+        <div className="max-w-6xl mx-auto space-y-8 lg:space-y-12 pb-20">
             <div className="flex items-center justify-between">
                 <div className="space-y-1">
-                    <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tighter">Queue Intelligence</h1>
-                    <p className="text-slate-400 font-medium text-lg">Real-time asynchronous task monitoring & infrastructure health.</p>
+                    <h1 className="text-4xl lg:text-5xl font-black text-white tracking-tighter">Observability Hub</h1>
+                    <p className="text-slate-400 font-medium text-lg">Full-stack visibility into MailGard infrastructure.</p>
                 </div>
                 <div className="flex items-center space-x-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full">
                     <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
-                    <span className="text-xs font-black text-emerald-500 uppercase tracking-widest">System Online</span>
+                    <span className="text-xs font-black text-emerald-500 uppercase tracking-widest">System Live</span>
                 </div>
             </div>
+
+            {/* Critical Alerts Bar */}
+            {alerts.length > 0 && (
+                <div className="bg-rose-500/10 border border-rose-500/20 rounded-[2rem] p-6 flex items-center justify-between animate-pulse">
+                    <div className="flex items-center space-x-4">
+                        <div className="p-3 bg-rose-500 rounded-2xl text-white shadow-lg shadow-rose-500/20">
+                            <Bell size={24} />
+                        </div>
+                        <div>
+                            <h3 className="text-white font-black tracking-tight">Active Critical Alerts</h3>
+                            <p className="text-sm text-rose-500/80 font-bold">{alerts.length} systems requiring immediate attention.</p>
+                        </div>
+                    </div>
+                    <Link href="#alerts" className="px-6 py-2 bg-rose-500 text-white text-[10px] font-black uppercase tracking-widest rounded-xl">View All</Link>
+                </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                 <StatCard label="Active Tasks" value={stats.active} icon={<Zap size={20} />} color="text-blue-500" />
@@ -57,57 +82,49 @@ export default function Monitor() {
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                <div className="lg:col-span-2 space-y-6">
-                    <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 lg:p-10 space-y-8 shadow-2xl">
-                        <div className="flex items-center justify-between">
+                <div className="lg:col-span-2 space-y-8">
+                    {/* Live Event Feed */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 lg:p-10 space-y-8 shadow-2xl overflow-hidden relative">
+                        <div className="flex items-center justify-between relative z-10">
                             <h2 className="text-2xl font-black text-white flex items-center space-x-3">
                                 <div className="p-2.5 bg-blue-600/10 rounded-xl text-blue-500">
-                                    <Server size={24} />
+                                    <Terminal size={24} />
                                 </div>
-                                <span>Worker System Status</span>
+                                <span>Live Event Stream</span>
                             </h2>
-                            <button onClick={fetchStats} className="p-2 text-slate-500 hover:text-white transition-colors">
-                                <RefreshCw size={20} />
-                            </button>
+                            <div className="flex items-center space-x-2">
+                                <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse" />
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Streaming</span>
+                            </div>
                         </div>
 
-                        <div className="space-y-4">
-                            <div className="p-6 bg-slate-950 border border-slate-800 rounded-3xl flex items-center justify-between group hover:border-blue-500/20 transition-all">
-                                <div className="flex items-center space-x-4">
-                                    <div className="p-3 bg-slate-900 border border-slate-800 rounded-2xl">
-                                        <Cpu size={24} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                        <div className="space-y-3 relative z-10 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
+                            {events.map((event, i) => (
+                                <div key={i} className="p-5 bg-slate-950/50 border border-slate-800/50 rounded-2xl flex items-start space-x-4 group hover:border-slate-700 transition-all">
+                                    <SeverityIcon severity={event.severity} />
+                                    <div className="flex-1 space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{event.type}</span>
+                                            <span className="text-[10px] font-bold text-slate-600 uppercase">{new Date(event.createdAt).toLocaleTimeString()}</span>
+                                        </div>
+                                        <p className="text-sm font-bold text-white group-hover:text-blue-200 transition-colors">{event.message}</p>
+                                        {event.accountId && (
+                                            <p className="text-[10px] text-slate-500 font-medium">Domain ID: {event.accountId}</p>
+                                        )}
                                     </div>
-                                    <div>
-                                        <p className="text-white font-bold tracking-tight">Main Production Worker</p>
-                                        <p className="text-[10px] text-slate-500 font-black uppercase tracking-widest mt-1">Concurrency: 10/s</p>
-                                    </div>
                                 </div>
-                                <div className="text-right">
-                                    <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-3 py-1 rounded-lg border border-emerald-500/20 uppercase tracking-widest">
-                                        Processing
-                                    </span>
-                                </div>
-                            </div>
-
-                            <div className="p-6 bg-blue-600/5 border border-blue-600/10 rounded-3xl flex items-start space-x-4">
-                                <AlertCircle className="text-blue-500 shrink-0 mt-1" size={20} />
-                                <div className="space-y-1">
-                                    <h4 className="text-white font-black tracking-tight text-sm uppercase">Infrastructure Insight</h4>
-                                    <p className="text-xs text-slate-500 font-medium leading-relaxed">
-                                        The worker system uses an exponential backoff strategy for failed sends. Currently, the system is optimized for stability over throughput to protect domain health.
-                                    </p>
-                                </div>
-                            </div>
+                            ))}
                         </div>
                     </div>
                 </div>
 
-                <div className="space-y-6 lg:space-y-8">
+                <div className="space-y-8">
+                    {/* Infrastructure Health */}
                     <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 space-y-6 shadow-2xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-3xl rounded-full" />
                         <h3 className="text-lg font-black text-white flex items-center space-x-2 relative z-10">
                             <Activity size={18} className="text-blue-500" />
-                            <span>System Load</span>
+                            <span>Infrastructure Load</span>
                         </h3>
                         <div className="space-y-6 relative z-10">
                             <LoadIndicator label="CPU Utilization" value={12} />
@@ -116,14 +133,30 @@ export default function Monitor() {
                         </div>
                     </div>
 
-                    <div className="bg-gradient-to-br from-slate-900 to-slate-950 border border-slate-800 rounded-[2.5rem] p-8 shadow-2xl">
-                        <h3 className="text-white font-black tracking-tight mb-4">Need Help?</h3>
-                        <p className="text-sm text-slate-500 font-medium mb-6 leading-relaxed">
-                            If you encounter persistent failures, please check your SMTP credentials and DNS configuration first.
-                        </p>
-                        <Link href="/settings" className="block text-center py-4 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-2xl transition-all text-xs uppercase tracking-widest">
-                            System Settings
-                        </Link>
+                    {/* Active Alerts List */}
+                    <div id="alerts" className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 space-y-6 shadow-2xl">
+                        <h3 className="text-lg font-black text-white flex items-center space-x-2">
+                            <AlertTriangle size={18} className="text-rose-500" />
+                            <span>System Alerts</span>
+                        </h3>
+                        <div className="space-y-4">
+                            {alerts.length === 0 ? (
+                                <div className="text-center py-8">
+                                    <CheckCircle2 size={32} className="text-emerald-500/20 mx-auto mb-2" />
+                                    <p className="text-[10px] font-black text-slate-600 uppercase tracking-widest">No active alerts</p>
+                                </div>
+                            ) : (
+                                alerts.map((alert, i) => (
+                                    <div key={i} className="p-4 bg-rose-500/5 border border-rose-500/10 rounded-2xl space-y-1">
+                                        <div className="flex items-center justify-between">
+                                            <span className="text-[10px] font-black text-rose-500 uppercase tracking-widest">{alert.type}</span>
+                                            <span className="text-[10px] font-bold text-slate-600">{new Date(alert.createdAt).toLocaleDateString()}</span>
+                                        </div>
+                                        <p className="text-xs font-bold text-white">{alert.message}</p>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
@@ -160,4 +193,13 @@ function LoadIndicator({ label, value, unit = '%' }: any) {
             </div>
         </div>
     );
+}
+
+function SeverityIcon({ severity }: { severity: string }) {
+    switch (severity) {
+        case 'CRITICAL': return <div className="p-2 bg-rose-500 text-white rounded-lg"><AlertCircle size={14} /></div>;
+        case 'ERROR': return <div className="p-2 bg-rose-500/10 text-rose-500 rounded-lg"><XCircle size={14} /></div>;
+        case 'WARNING': return <div className="p-2 bg-amber-500/10 text-amber-500 rounded-lg"><AlertTriangle size={14} /></div>;
+        default: return <div className="p-2 bg-blue-500/10 text-blue-500 rounded-lg"><Info size={14} /></div>;
+    }
 }

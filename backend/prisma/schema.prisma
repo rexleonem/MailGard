@@ -83,5 +83,28 @@ model EmailLog {
   status      LogStatus
   error       String?
   aiDecision  Json?
+  metadata    Json?     // For tracking headers, timing, etc.
   createdAt   DateTime  @default(now())
+}
+
+model SystemEvent {
+  id          String    @id @default(cuid())
+  type        String    // SMTP, QUEUE, DIAGNOSTICS, AI, ADAPTIVE, SECURITY
+  severity    String    // INFO, WARNING, ERROR, CRITICAL
+  message     String
+  accountId   String?
+  userId      String?
+  payload     Json?
+  createdAt   DateTime  @default(now())
+}
+
+model Alert {
+  id          String    @id @default(cuid())
+  type        String    // BLACKLIST, DNS_FAILURE, SMTP_FAILURES, AI_ESCALATION
+  severity    String
+  message     String
+  accountId   String?
+  resolved    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  resolvedAt  DateTime?
 }
