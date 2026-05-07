@@ -6,6 +6,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
 import prisma from './lib/prisma';
+import { initCronJobs } from './cron/warmupScheduler';
 import './workers/warmupWorker';
 
 import accountRoutes from './routes/accountRoutes';
@@ -14,6 +15,8 @@ import { authMiddleware } from './middleware/authMiddleware';
 
 const app = express();
 const port = process.env.PORT || 4000;
+
+initCronJobs();
 
 app.use(helmet());
 app.use(cors());
