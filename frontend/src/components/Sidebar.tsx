@@ -14,10 +14,10 @@ export function Sidebar() {
     const [isOpen, setIsOpen] = useState(false);
 
     const menuItems = [
-        { icon: <LayoutDashboard size={20} />, label: 'Overview', path: '/' },
-        { icon: <PlusCircle size={20} />, label: 'Add Domain', path: '/domains/new' },
-        { icon: <Activity size={20} />, label: 'Warm-up Logs', path: '/logs', disabled: true },
-        { icon: <Settings size={20} />, label: 'Settings', path: '/settings' },
+        { icon: <LayoutDashboard size={20} />, label: 'Overview', path: '/', disabled: false },
+        { icon: <PlusCircle size={20} />, label: 'Add Domain', path: '/domains/new', disabled: false },
+        { icon: <Activity size={20} />, label: 'Intelligence', path: '/monitor', disabled: false },
+        { icon: <Settings size={20} />, label: 'Settings', path: '/settings', disabled: false },
     ];
 
     const toggleSidebar = () => setIsOpen(!isOpen);

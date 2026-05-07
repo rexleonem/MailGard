@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { 
     createAccount, getAccounts, getAccountDetail, triggerWarmup, 
-    deleteAccount, updateAccount, refreshDiagnostics 
+    deleteAccount, updateAccount, refreshDiagnostics, getQueueStats
 } from '../controllers/accountController';
 
 const router = Router();
@@ -13,5 +13,6 @@ router.put('/:id', updateAccount);
 router.delete('/:id', deleteAccount);
 router.post('/:id/warmup', triggerWarmup);
 router.post('/:id/diagnostics', refreshDiagnostics);
+router.get('/monitor/stats', getQueueStats);
 
 export default router;

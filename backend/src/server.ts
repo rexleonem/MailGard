@@ -7,7 +7,7 @@ import helmet from 'helmet';
 import compression from 'compression';
 import prisma from './lib/prisma';
 import { initCronJobs } from './cron/warmupScheduler';
-import './workers/warmupWorker';
+import './workers/mainWorker';
 
 import accountRoutes from './routes/accountRoutes';
 import authRoutes from './routes/authRoutes';

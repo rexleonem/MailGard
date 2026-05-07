@@ -1,11 +1,11 @@
-import { Response } from 'express';
+import { Request, Response } from 'express';
 import nodemailer from 'nodemailer';
 import prisma from '../lib/prisma';
 import { AuthRequest } from '../middleware/authMiddleware';
 import { encrypt } from '../lib/encryption';
 import { checkSPF, checkDKIM, checkDMARC } from '../lib/dns';
 import { analyzeRisk } from '../lib/gemini';
-import { addWarmupJob } from '../queues/warmupQueue';
+import { addWarmupJob, mailgardQueue } from '../queues/warmupQueue';
 
 export const createAccount = async (req: AuthRequest, res: Response) => {
     try {
@@ -154,6 +154,27 @@ async function runDiagnostics(accountId: string, domain: string, smtpHost: strin
         throw err;
     }
 }
+
+export const getQueueStats = async (req: Request, res: Response) => {
+    try {
+        const [waiting, active, completed, failed] = await Promise.all([
+            mailgardQueue.getWaitingCount(),
+            mailgardQueue.getActiveCount(),
+            mailgardQueue.getCompletedCount(),
+            mailgardQueue.getFailedCount()
+        ]);
+
+        res.json({
+            waiting,
+            active,
+            completed,
+            failed,
+            workerStatus: 'ONLINE'
+        });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to fetch queue stats' });
+    }
+};
 
 export const refreshDiagnostics = async (req: AuthRequest, res: Response) => {
     try {
