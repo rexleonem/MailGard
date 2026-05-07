@@ -19,17 +19,25 @@ export default function DomainDetail() {
     const [triggering, setTriggering] = useState(false);
     const [diagnosing, setDiagnosing] = useState(false);
     const [confirmDelete, setConfirmDelete] = useState(false);
+    const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
         fetchData();
     }, [id]);
 
     const fetchData = async () => {
+        setLoading(true);
+        setError(null);
         try {
             const res = await api.get(`/accounts/${id}`);
             setData(res.data);
-        } catch (err) {
-            console.error(err);
+        } catch (err: any) {
+            console.error('DomainDetail fetch failed:', err);
+            if (err.response?.status === 404) {
+                setError('ACCOUNT_NOT_FOUND');
+            } else {
+                setError(err.response?.data?.error || 'Failed to load domain data');
+            }
         } finally {
             setLoading(false);
         }
@@ -86,11 +94,21 @@ export default function DomainDetail() {
             <Activity className="animate-spin text-blue-500" size={48} />
         </div>
     );
-    if (!data) return (
+    if (error === 'ACCOUNT_NOT_FOUND' || (!data && !loading && !error)) return (
         <div className="flex flex-col items-center justify-center h-[70vh] space-y-4">
             <ShieldAlert size={64} className="text-slate-800" />
             <h2 className="text-2xl font-bold text-white">Account Not Found</h2>
+            <p className="text-slate-500">The requested domain ID does not exist or you do not have permission.</p>
             <Link href="/" className="text-blue-500 font-bold hover:underline">Return to Dashboard</Link>
+        </div>
+    );
+
+    if (error) return (
+        <div className="flex flex-col items-center justify-center h-[70vh] space-y-4">
+            <AlertTriangle size={64} className="text-rose-500/20" />
+            <h2 className="text-2xl font-bold text-white">System Error</h2>
+            <p className="text-slate-500">{error}</p>
+            <button onClick={fetchData} className="text-blue-500 font-bold hover:underline">Retry Fetch</button>
         </div>
     );
 

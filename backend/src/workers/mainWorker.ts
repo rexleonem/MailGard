@@ -16,24 +16,25 @@ const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379'
 const WORKER_ID = `${os.hostname()}-${process.pid}`;
 
 async function validateSafety(accountId: string) {
-    const adaptive = await calculateAdaptiveState(accountId);
-    if (!adaptive) return { safe: false, reason: 'TRUST_STATE_MISSING' };
-
     const account = await prisma.account.findUnique({
         where: { id: accountId },
         include: { diagnostics: { orderBy: { createdAt: 'desc' }, take: 1 } }
     });
 
     if (!account) return { safe: false, reason: 'ACCOUNT_NOT_FOUND' };
-    if (account.status !== 'ACTIVE') return { safe: false, reason: `STATUS_${account.status}` };
 
-    if (adaptive.cooldownUntil && new Date() < new Date(adaptive.cooldownUntil)) {
-        return { safe: false, reason: 'COOLDOWN_ACTIVE' };
+    const adaptive = await calculateAdaptiveState(accountId);
+    if (!adaptive) return { safe: false, reason: 'TRUST_STATE_MISSING', account };
+
+    if (account.status !== 'ACTIVE') return { safe: false, reason: `STATUS_${account.status}`, account, adaptive };
+
+    if ((adaptive as any).cooldownUntil && new Date() < new Date((adaptive as any).cooldownUntil)) {
+        return { safe: false, reason: 'COOLDOWN_ACTIVE', account, adaptive };
     }
 
     const diag = account.diagnostics[0];
     const aiData = (diag?.rawData as any) || {};
-    if (aiData.risk === 'HIGH_RISK') return { safe: false, reason: 'AI_HIGH_RISK_BLOCK' };
+    if (aiData.risk === 'HIGH_RISK') return { safe: false, reason: 'AI_HIGH_RISK_BLOCK', account, adaptive };
 
     return { safe: true, account, adaptive };
 }
@@ -52,7 +53,7 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
     if (logId) {
         await prisma.emailLog.update({
             where: { id: logId },
-            data: { status: 'PROCESSING', workerId: WORKER_ID, jobId: job.id }
+            data: { status: 'PROCESSING' as any, workerId: WORKER_ID, jobId: job.id }
         });
     }
 
@@ -63,7 +64,7 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
         if (logId) {
             await prisma.emailLog.update({
                 where: { id: logId },
-                data: { status: 'BLOCKED', error: safety.reason }
+                data: { status: 'BLOCKED' as any, error: safety.reason }
             });
         }
         await logger.log({
@@ -143,7 +144,14 @@ async function handleEmailExecution(jobData: any, account: any, adaptive: any, j
         auth: {
             user: account.email,
             pass: decryptedPassword
-        }
+        },
+        tls: {
+            rejectUnauthorized: false,
+            minVersion: 'TLSv1.2'
+        },
+        connectionTimeout: 20000,
+        greetingTimeout: 20000,
+        socketTimeout: 30000
     } as any);
 
     const info = await transporter.sendMail({
@@ -163,10 +171,10 @@ async function handleEmailExecution(jobData: any, account: any, adaptive: any, j
             where: { id: logId },
             data: {
                 status: 'SENT',
-                smtpResponse: info.response,
+                smtpResponse: info.response as any,
                 aiDecision: aiDecision as any,
                 metadata: { messageId: info.messageId }
-            }
+            } as any
         });
     } else if (!isTest) {
         // Create auto-warmup log
@@ -176,12 +184,12 @@ async function handleEmailExecution(jobData: any, account: any, adaptive: any, j
                 recipient,
                 subject,
                 status: 'SENT',
-                smtpResponse: info.response,
-                aiDecision: aiDecision as any,
+                smtpResponse: info.response as any,
+                ...aiDecision ? { aiDecision: aiDecision as any } : {},
                 workerId: WORKER_ID,
                 jobId: jobId,
                 domain: account.domain
-            }
+            } as any
         });
     }
 

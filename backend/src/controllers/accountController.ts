@@ -32,6 +32,7 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
         });
 
         // STEP 1: SMTP Verification Gate (MANDATORY)
+        console.log(`[DEBUG] Verifying SMTP for ${email} on ${smtpHost}:${port}`);
         const transporter = nodemailer.createTransport({
             host: smtpHost,
             port: port,
@@ -40,15 +41,25 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
                 user: email,
                 pass: password
             },
-            timeout: 10000
+            tls: {
+                rejectUnauthorized: false, // Required for many shared hosting providers
+                minVersion: 'TLSv1.2'
+            },
+            connectionTimeout: 20000,
+            greetingTimeout: 20000,
+            socketTimeout: 30000,
+            debug: true // Enable for internal tracing
         } as any);
 
         try {
             await transporter.verify();
         } catch (smtpErr: any) {
+            console.error(`[ERROR] SMTP Verification failed for ${email}:`, smtpErr);
             return res.status(400).json({ 
                 error: 'SMTP Authentication Failed', 
-                reason: smtpErr.message 
+                reason: smtpErr.message,
+                code: smtpErr.code,
+                command: smtpErr.command
             });
         }
 
@@ -94,7 +105,7 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
                         currentCount: 0,
                         trustLevel: 'NEW',
                         trustTrend: 0.0
-                    }
+                    } as any
                 }
             }
         });
@@ -191,7 +202,7 @@ async function runDiagnostics(accountId: string, domain: string, smtpHost: strin
 export const getSystemEvents = async (req: AuthRequest, res: Response) => {
     try {
         console.log(`[DEBUG] getSystemEvents: Fetching for userId: ${req.userId}`);
-        const events = await prisma.systemEvent.findMany({
+        const events = await (prisma as any).systemEvent.findMany({
             where: { userId: req.userId },
             orderBy: { createdAt: 'desc' },
             take: 100
@@ -207,7 +218,7 @@ export const getSystemEvents = async (req: AuthRequest, res: Response) => {
 export const getAlerts = async (req: AuthRequest, res: Response) => {
     try {
         console.log(`[DEBUG] getAlerts: Fetching...`);
-        const alerts = await prisma.alert.findMany({
+        const alerts = await (prisma as any).alert.findMany({
             where: { resolved: false },
             orderBy: { createdAt: 'desc' }
         });
@@ -267,7 +278,7 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
     try {
         console.log(`[DEBUG] getAccounts: Fetching for userId: ${req.userId}`);
         const accounts = await prisma.account.findMany({
-            where: { userId: req.userId },
+            where: { userId: req.userId } as any,
             include: { 
                 diagnostics: { orderBy: { createdAt: 'desc' }, take: 1 },
                 warmupState: true
@@ -289,21 +300,33 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
 
 export const getAccountDetail = async (req: AuthRequest, res: Response) => {
     try {
+        const { id } = req.params;
+        console.log(`[DEBUG] getAccountDetail: Searching for ID: ${id}, User: ${req.userId}`);
+        
         const account = await prisma.account.findFirst({
-            where: { id: String(req.params.id), userId: req.userId } as any,
+            where: { 
+                id: String(id), 
+                userId: req.userId 
+            } as any,
             include: {
                 diagnostics: { orderBy: { createdAt: 'desc' } },
                 warmupState: true,
                 emailLogs: { orderBy: { createdAt: 'desc' }, take: 50 }
             }
         });
-        if (!account) return res.status(404).json({ error: 'Account not found' });
+
+        if (!account) {
+            console.log(`[DEBUG] getAccountDetail: NOT FOUND for ID: ${id}`);
+            return res.status(404).json({ error: 'Account not found' });
+        }
         
+        console.log(`[DEBUG] getAccountDetail: Found account ${account.email}. Calculating adaptive state...`);
         const adaptive = await calculateAdaptiveState(account.id);
         
         res.json({ ...account, adaptive });
-    } catch (error) {
-        res.status(500).json({ error: 'Failed to fetch account detail' });
+    } catch (error: any) {
+        console.error('[ERROR] getAccountDetail failed:', error);
+        res.status(500).json({ error: 'Failed to fetch account detail', details: error.message });
     }
 };
 
@@ -371,9 +394,9 @@ export const sendTestEmail = async (req: AuthRequest, res: Response) => {
                 accountId: account.id,
                 recipient,
                 subject,
-                status: 'QUEUED',
+                status: 'QUEUED' as any,
                 domain: account.domain
-            }
+            } as any
         });
 
         await addWarmupJob({

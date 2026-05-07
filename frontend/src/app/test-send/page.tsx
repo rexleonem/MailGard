@@ -31,9 +31,8 @@ export default function TestSendPage() {
         try {
             const { data } = await api.get('/accounts');
             console.log('TestSendPage: Fetched accounts:', data);
-            // Filter only verified and non-blocked accounts
+            // Filter only accounts that have baseline diagnostics
             const filtered = data.filter((a: any) => 
-                a.status !== 'RISK_BLOCKED' && 
                 a.diagnostics?.[0]?.spf && 
                 a.diagnostics?.[0]?.dkim
             );
@@ -113,7 +112,7 @@ export default function TestSendPage() {
                                 <div className="col-span-full py-12 text-center bg-slate-950/50 rounded-3xl border border-dashed border-slate-800">
                                     <AlertTriangle size={32} className="text-amber-500/20 mx-auto mb-2" />
                                     <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">No verified SMTP accounts found</p>
-                                    <Link href="/accounts" className="text-blue-500 text-[10px] font-black uppercase mt-2 block hover:underline">Connect an account</Link>
+                                    <Link href="/domains/new" className="text-blue-500 text-[10px] font-black uppercase mt-2 block hover:underline">Connect an account</Link>
                                 </div>
                             ) : (
                                 accounts.map((acc) => (

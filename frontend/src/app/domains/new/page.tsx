@@ -42,16 +42,17 @@ export default function NewDomain() {
         }, 1500);
 
         try {
-            await api.post('/accounts', formData);
+            const res = await api.post('/accounts', formData);
             clearInterval(interval);
             setStep('SUCCESS');
             setTimeout(() => router.push('/'), 2000);
         } catch (err: any) {
             clearInterval(interval);
+            console.error('Verification failed:', err.response?.data);
             setStep('FAILED');
             setError({
-                message: err.response?.data?.error || 'Verification failed',
-                code: err.response?.data?.code || 'AUTH_ERROR'
+                message: err.response?.data?.reason || err.response?.data?.error || 'Verification failed. Please check your credentials and server settings.',
+                code: err.response?.data?.code || 'AUTH_FAILURE'
             });
         }
     };
