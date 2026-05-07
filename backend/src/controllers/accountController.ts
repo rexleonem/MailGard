@@ -40,149 +40,148 @@ export const createAccount = async (req: AuthRequest, res: Response) => {
                 user: email,
                 pass: password
             },
-            connectTimeout: 10000 
+            timeout: 10000
         } as any);
 
         try {
             await transporter.verify();
-        } catch (smtpError: any) {
-            console.error('SMTP Verification Failed:', smtpError);
-            
-            let errorType = 'UNKNOWN_ERROR';
-            let message = 'Failed to verify SMTP credentials';
-
-            if (smtpError.code === 'EAUTH') {
-                errorType = 'AUTH_FAILED';
-                message = 'Invalid SMTP credentials. Please check your email and password.';
-            } else if (smtpError.code === 'ETIMEDOUT' || smtpError.code === 'ECONNREFUSED') {
-                errorType = 'CONNECTION_TIMEOUT';
-                message = 'Could not connect to the SMTP server. Check host and port.';
-            } else if (smtpError.message?.includes('SSL') || smtpError.message?.includes('TLS')) {
-                errorType = 'SSL_ERROR';
-                message = 'SSL/TLS handshake failed. Verify port and security settings.';
-            } else if (smtpError.code === 'ENOTFOUND') {
-                errorType = 'UNKNOWN_HOST';
-                message = 'SMTP host not found. Please verify the server address.';
-            }
-
+        } catch (smtpErr: any) {
             return res.status(400).json({ 
-                error: message, 
-                code: errorType,
-                details: smtpError.message 
+                error: 'SMTP Authentication Failed', 
+                reason: smtpErr.message 
             });
         }
 
-        // STEP 2: Encryption and Storage (ONLY ON SUCCESS)
-        const encryptedPassword = JSON.stringify(encrypt(password));
+        // STEP 2: Run Initial Diagnostics
+        const spf = await checkSPF(domain);
+        const dkim = await checkDKIM(domain);
+        const dmarc = await checkDMARC(domain);
 
+        // STEP 3: Initial AI Risk Assessment
+        const aiDecision = await analyzeRisk({
+            domain,
+            spf,
+            dkim,
+            dmarc,
+            ipScore: 100, // Starting default
+            systemState: 'NEW'
+        });
+
+        // STEP 4: Encrypt and Store
+        const encrypted = encrypt(password);
+        
         const account = await prisma.account.create({
             data: {
                 userId: req.userId!,
                 email,
                 smtpHost,
                 smtpPort: port,
-                password: encryptedPassword,
+                password: JSON.stringify(encrypted),
                 domain,
-                status: 'PAUSED', // Start paused until diagnostics pass
+                status: aiDecision.risk === 'HIGH_RISK' ? 'RISK_BLOCKED' : 'ACTIVE',
+                diagnostics: {
+                    create: {
+                        spf,
+                        dkim,
+                        dmarc,
+                        ipScore: aiDecision.score,
+                        rawData: aiDecision as any
+                    }
+                },
                 warmupState: {
-                    create: {} 
+                    create: {
+                        dayNumber: 1,
+                        currentCount: 0,
+                        trustLevel: 'NEW',
+                        trustTrend: 0.0
+                    }
                 }
             }
         });
 
-        // STEP 3: RUN DIAGNOSTICS ENGINE
-        await runDiagnostics(account.id, domain, smtpHost);
-
-        const updatedAccount = await prisma.account.findUnique({
-            where: { id: account.id },
-            include: { diagnostics: { take: 1, orderBy: { createdAt: 'desc' } } }
+        await logger.log({
+            type: 'SECURITY',
+            severity: 'INFO',
+            message: `Account created successfully: ${email}`,
+            accountId: account.id,
+            userId: req.userId
         });
 
-        res.status(201).json(updatedAccount);
+        res.json(account);
+    } catch (err: any) {
+        if (err instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Validation failed', details: err.issues });
+        }
+        console.error('Account creation failed:', err);
+        res.status(500).json({ error: 'Failed to create account' });
+    }
+};
+
+export const updateAccount = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        const { status } = req.body;
+        const account = await prisma.account.update({
+            where: { id: String(id), userId: req.userId } as any,
+            data: { status }
+        });
+        res.json(account);
     } catch (error) {
-        console.error('Account creation failed:', error);
-        res.status(500).json({ error: 'System error during account creation' });
+        res.status(500).json({ error: 'Failed to update account' });
+    }
+};
+
+export const deleteAccount = async (req: AuthRequest, res: Response) => {
+    try {
+        const { id } = req.params;
+        await prisma.account.delete({
+            where: { id: String(id), userId: req.userId } as any
+        });
+        res.json({ message: 'Account deleted' });
+    } catch (error) {
+        res.status(500).json({ error: 'Failed to delete account' });
     }
 };
 
 async function runDiagnostics(accountId: string, domain: string, smtpHost: string) {
     try {
-        // 1. DNS Authentication Checks
         const spf = await checkSPF(domain);
         const dkim = await checkDKIM(domain);
         const dmarc = await checkDMARC(domain);
 
-        // 2. IP/SMTP Reputation Check (Simulated for now, can be extended with AbuseIPDB)
-        const ipScore = Math.floor(Math.random() * 40) + 60; // 60-100 random score for demo
-
-        // 3. AI Analysis (Gemini)
-        const aiResult = await analyzeRisk({ 
-            domain, 
-            spf, 
-            dkim, 
-            dmarc, 
-            ipScore,
-            systemState: 'ACTIVE' // Contextual
+        const aiDecision = await analyzeRisk({
+            domain,
+            spf,
+            dkim,
+            dmarc,
+            ipScore: 85, 
+            systemState: 'ACTIVE'
         });
 
-        await logger.log({
-            type: 'AI',
-            severity: aiResult.risk === 'HIGH_RISK' ? 'WARNING' : 'INFO',
-            message: `AI Risk Assessment: ${aiResult.risk} (Score: ${aiResult.score})`,
-            accountId,
-            payload: aiResult
-        });
-
-        // 4. SCORING ENGINE (0-100)
-        // System baseline score combined with AI score
-        let healthScore = aiResult.score;
-
-        // 5. RISK CLASSIFICATION
-        const riskLevel = aiResult.risk;
-
-        // 6. PERSIST DIAGNOSTIC DATA
         await prisma.diagnostic.create({
             data: {
                 accountId,
                 spf,
                 dkim,
                 dmarc,
-                ipScore: healthScore,
-                rawData: {
-                    ...aiResult,
-                    ipReputation: ipScore,
-                    scoringBreakdown: {
-                        dns: spf && dkim && dmarc ? 'PASS' : 'FAILED',
-                        ip: ipScore >= 80 ? 'CLEAN' : 'CAUTION',
-                        aiRefinedRisk: aiResult.risk,
-                        systemOverride: aiResult.isOverridden
-                    }
-                }
+                ipScore: aiDecision.score,
+                rawData: aiDecision as any
             }
         });
 
-        // 7. STRICT ENFORCEMENT
-        let finalStatus: 'ACTIVE' | 'PAUSED' | 'RISK_BLOCKED' = 'ACTIVE';
-        if (riskLevel === 'HIGH_RISK' || aiResult.action === 'PAUSE') {
-            finalStatus = 'RISK_BLOCKED';
-        } else if (riskLevel === 'CAUTION' || aiResult.action === 'SLOW_DOWN') {
-            finalStatus = 'PAUSED'; 
+        if (aiDecision.risk === 'HIGH_RISK') {
+            await prisma.account.update({
+                where: { id: accountId },
+                data: { status: 'RISK_BLOCKED' }
+            });
+            
+            await logger.log({
+                type: 'DIAGNOSTICS',
+                severity: 'CRITICAL',
+                message: `Domain ${domain} blocked due to high AI risk: ${aiDecision.reason}`,
+                accountId
+            });
         }
-
-        await prisma.account.update({
-            where: { id: accountId },
-            data: { status: finalStatus }
-        });
-
-        await logger.log({
-            type: 'DIAGNOSTICS',
-            severity: healthScore < 50 ? 'WARNING' : 'INFO',
-            message: `Diagnostics completed for ${domain}. Score: ${healthScore}`,
-            accountId,
-            payload: { spf, dkim, dmarc, ipScore, healthScore }
-        });
-
-        return { healthScore, riskLevel };
     } catch (err) {
         console.error('Diagnostics failed:', err);
         throw err;
@@ -242,7 +241,7 @@ export const refreshDiagnostics = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const account = await prisma.account.findFirst({
-            where: { id: id as string, userId: req.userId }
+            where: { id: String(id), userId: req.userId } as any
         });
         if (!account) return res.status(404).json({ error: 'Account not found' });
 
@@ -277,7 +276,7 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
 export const getAccountDetail = async (req: AuthRequest, res: Response) => {
     try {
         const account = await prisma.account.findFirst({
-            where: { id: req.params.id as string, userId: req.userId },
+            where: { id: String(req.params.id), userId: req.userId } as any,
             include: {
                 diagnostics: { orderBy: { createdAt: 'desc' } },
                 warmupState: true,
@@ -286,7 +285,6 @@ export const getAccountDetail = async (req: AuthRequest, res: Response) => {
         });
         if (!account) return res.status(404).json({ error: 'Account not found' });
         
-        // Calculate adaptive state for the UI
         const adaptive = await calculateAdaptiveState(account.id);
         
         res.json({ ...account, adaptive });
@@ -298,51 +296,142 @@ export const getAccountDetail = async (req: AuthRequest, res: Response) => {
 export const triggerWarmup = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        const account = await prisma.account.findFirst({
-            where: { id: id as string, userId: req.userId }
+        const account = await prisma.account.findUnique({
+            where: { id: String(id) } as any,
+            include: { diagnostics: { take: 1, orderBy: { createdAt: 'desc' } } }
         });
-        
-        if (!account) return res.status(404).json({ error: 'Account not found' });
-        if (account.status !== 'ACTIVE') return res.status(400).json({ error: 'Account is not active' });
 
-        // Add job with random delay within an hour for "human-like" behavior
-        const delay = Math.floor(Math.random() * 3600000);
-        await addWarmupJob(id as string, delay);
+        if (!account) return res.status(404).json({ error: 'Account not found' });
+        
+        const diag = (account as any).diagnostics[0];
+        if (!diag || !diag.spf || !diag.dkim) {
+            return res.status(403).json({ error: 'Domain authentication failed. Cannot warm up.' });
+        }
+
+        const delay = Math.floor(Math.random() * 60000); 
+        await addWarmupJob({
+            accountId: account.id,
+            email: account.email,
+            recipient: 'test@mailgard.ai',
+            subject: 'Warming up your deliverability',
+            body: 'This is a MailGard automated warm-up email.'
+        }, delay);
 
         res.json({ message: 'Warm-up job scheduled', scheduledIn: `${Math.round(delay/60000)} minutes` });
     } catch (error) {
+        console.error('Trigger warmup failed:', error);
         res.status(500).json({ error: 'Failed to trigger warmup' });
     }
 };
 
-export const deleteAccount = async (req: AuthRequest, res: Response) => {
+export const sendTestEmail = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
-        await prisma.account.delete({
-            where: { id: id as string, userId: req.userId }
+        const { recipient, subject, body } = req.body;
+
+        const account = await prisma.account.findFirst({
+            where: { id: String(id), userId: req.userId } as any,
+            include: { diagnostics: { take: 1, orderBy: { createdAt: 'desc' } } }
         });
-        res.json({ message: 'Account deleted successfully' });
+
+        if (!account) return res.status(404).json({ error: 'Account not found' });
+        
+        if (account.status === 'RISK_BLOCKED') {
+            return res.status(403).json({ error: 'Account is blocked due to high risk' });
+        }
+
+        const diag = (account as any).diagnostics[0];
+        if (!diag || !diag.spf || !diag.dkim) {
+            return res.status(403).json({ error: 'Domain authentication failed. Cannot send.' });
+        }
+
+        const emailLog = await prisma.emailLog.create({
+            data: {
+                accountId: account.id,
+                recipient,
+                subject,
+                status: 'QUEUED',
+                domain: account.domain
+            }
+        });
+
+        await addWarmupJob({
+            accountId: account.id,
+            email: account.email,
+            recipient,
+            subject,
+            body,
+            isTest: true,
+            logId: emailLog.id
+        });
+
+        res.json({ message: 'Test email queued', logId: emailLog.id });
     } catch (error) {
-        console.error('Delete account failed:', error);
-        res.status(500).json({ error: 'Failed to delete account' });
+        console.error('Test send failed:', error);
+        res.status(500).json({ error: 'Failed to queue test email' });
     }
 };
 
-export const updateAccount = async (req: AuthRequest, res: Response) => {
+export const getEmailLogs = async (req: AuthRequest, res: Response) => {
     try {
-        const { id } = req.params;
-        const { status, smtpHost, smtpPort } = req.body;
-        
-        const account = await prisma.account.update({
-            where: { id: id as string, userId: req.userId },
-            data: {
-                status,
-                smtpHost,
-                smtpPort: smtpPort ? parseInt(smtpPort) : undefined
+        const { page = 1, limit = 20, search, status, domain } = req.query;
+        const skip = (Number(page) - 1) * Number(limit);
+
+        const where: any = {
+            account: { userId: req.userId }
+        };
+
+        if (search) {
+            (where as any).OR = [
+                { recipient: { contains: String(search), mode: 'insensitive' } },
+                { subject: { contains: String(search), mode: 'insensitive' } }
+            ] as any;
+        }
+
+        if (status) (where as any).status = status as any;
+        if (domain) (where as any).domain = domain as any;
+
+        const [logs, total] = await Promise.all([
+            prisma.emailLog.findMany({
+                where: where as any,
+                include: { account: { select: { email: true, domain: true } } },
+                orderBy: { createdAt: 'desc' },
+                skip,
+                take: Number(limit)
+            }),
+            prisma.emailLog.count({ where: where as any })
+        ]);
+
+        res.json({
+            logs,
+            pagination: {
+                total,
+                pages: Math.ceil(total / Number(limit)),
+                currentPage: Number(page)
             }
         });
-        res.json(account);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update account' });
+        console.error('getEmailLogs failed:', error);
+        res.status(500).json({ error: 'Failed to fetch logs' });
+    }
+};
+
+export const getLogDetail = async (req: AuthRequest, res: Response) => {
+    try {
+        const log = await prisma.emailLog.findFirst({
+            where: { id: String(req.params.id), account: { userId: req.userId } } as any,
+            include: { account: { include: { diagnostics: { take: 1, orderBy: { createdAt: 'desc' } } } } }
+        });
+        if (!log) return res.status(404).json({ error: 'Log not found' });
+        
+        // Security: Redact sensitive info
+        if ((log as any).account) {
+            (log as any).account.password = undefined;
+        }
+        
+        res.json(log);
+    } catch (error) {
+        console.error('getLogDetail failed:', error);
+        res.status(500).json({ error: 'Failed to fetch log detail' });
     }
 };

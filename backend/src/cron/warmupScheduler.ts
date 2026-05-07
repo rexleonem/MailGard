@@ -25,7 +25,7 @@ export function initCronJobs() {
             for (const account of activeAccounts) {
                 // Initial delay for the first email of the day (10-30 mins)
                 const initialDelay = Math.floor(Math.random() * (1800000 - 600000) + 600000);
-                await addWarmupJob(account.id, initialDelay);
+                await addWarmupJob({ accountId: account.id, email: account.email }, initialDelay);
                 console.log(`Queued initial warm-up for ${account.email}`);
             }
 

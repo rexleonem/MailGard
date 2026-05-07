@@ -7,15 +7,14 @@ import { getRandomMessage } from '../lib/messages';
 import { addWarmupJob } from '../queues/warmupQueue';
 import { calculateAdaptiveState, getNaturalDelay } from '../lib/trustEngine';
 import { logger } from '../lib/logger';
+import os from 'os';
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
 });
 
-/**
- * ADVANCED SAFETY GATE
- * Consumes Adaptive Trust Model + AI Risk + System Rules
- */
+const WORKER_ID = `${os.hostname()}-${process.pid}`;
+
 async function validateSafety(accountId: string) {
     const adaptive = await calculateAdaptiveState(accountId);
     if (!adaptive) return { safe: false, reason: 'TRUST_STATE_MISSING' };
@@ -28,14 +27,8 @@ async function validateSafety(accountId: string) {
     if (!account) return { safe: false, reason: 'ACCOUNT_NOT_FOUND' };
     if (account.status !== 'ACTIVE') return { safe: false, reason: `STATUS_${account.status}` };
 
-    // Cooldown check
     if (adaptive.cooldownUntil && new Date() < new Date(adaptive.cooldownUntil)) {
         return { safe: false, reason: 'COOLDOWN_ACTIVE' };
-    }
-
-    // AI & Adaptive Limit check
-    if (adaptive.currentCount >= adaptive.adaptiveLimit) {
-        return { safe: false, reason: 'ADAPTIVE_LIMIT_REACHED' };
     }
 
     const diag = account.diagnostics[0];
@@ -46,7 +39,7 @@ async function validateSafety(accountId: string) {
 }
 
 export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
-    const { type, accountId } = job.data;
+    const { type, accountId, logId, isTest } = job.data;
 
     await logger.log({
         type: 'QUEUE',
@@ -55,12 +48,28 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
         accountId
     });
 
+    // Update log status to PROCESSING if exists
+    if (logId) {
+        await prisma.emailLog.update({
+            where: { id: logId },
+            data: { status: 'PROCESSING', workerId: WORKER_ID, jobId: job.id }
+        });
+    }
+
     const safety = await validateSafety(accountId);
-    if (!safety.safe && type === 'WARM_SEND') {
+    
+    // Safety check block (only for WARM_SEND, TEST_SEND is pre-validated in controller)
+    if (!safety.safe && !isTest) {
+        if (logId) {
+            await prisma.emailLog.update({
+                where: { id: logId },
+                data: { status: 'BLOCKED', error: safety.reason }
+            });
+        }
         await logger.log({
             type: 'ADAPTIVE',
             severity: 'WARNING',
-            message: `Warm-up blocked: ${safety.reason}`,
+            message: `Send blocked: ${safety.reason}`,
             accountId,
             payload: { reason: safety.reason }
         });
@@ -70,24 +79,30 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
     const { account, adaptive } = safety;
 
     try {
-        if (type === 'WARM_SEND') {
-            await handleAdaptiveSend(account!, adaptive!);
-            await logger.log({
-                type: 'SMTP',
-                severity: 'INFO',
-                message: `Successfully sent warm-up email for ${account?.email}`,
-                accountId
+        await handleEmailExecution(job.data, account!, adaptive!, job.id!);
+        
+        await logger.log({
+            type: 'SMTP',
+            severity: 'INFO',
+            message: `Successfully executed ${type} for ${account?.email}`,
+            accountId
+        });
+    } catch (error: any) {
+        const errorMsg = error.message || 'Unknown SMTP error';
+        if (logId) {
+            await prisma.emailLog.update({
+                where: { id: logId },
+                data: { status: 'FAILED', error: errorMsg }
             });
         }
-    } catch (error: any) {
         await logger.log({
             type: 'SMTP',
             severity: 'ERROR',
-            message: `SMTP failed for ${account?.email}: ${error.message}`,
+            message: `SMTP failed for ${account?.email}: ${errorMsg}`,
             accountId,
-            payload: { error: error.message, code: error.code }
+            payload: { error: errorMsg, code: error.code }
         });
-        throw error; // Let BullMQ handle retries with backoff
+        throw error;
     }
 }, { 
     connection,
@@ -95,28 +110,29 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
     stalledInterval: 30000
 });
 
-// Graceful Shutdown
-process.on('SIGTERM', async () => {
-    await mainWorker.close();
-});
+async function handleEmailExecution(jobData: any, account: any, adaptive: any, jobId: string) {
+    const { isTest, recipient: manualRecipient, subject: manualSubject, body: manualBody, logId } = jobData;
 
-async function handleAdaptiveSend(account: any, adaptive: any) {
-    // 1. Idempotency & Frequency Check (Safety)
-    const lastHourSend = await prisma.emailLog.findFirst({
-        where: {
-            accountId: account.id,
-            createdAt: { gte: new Date(Date.now() - 5 * 60000) } // 5 minute window for deduplication
-        }
-    });
+    // Determine content
+    let recipient = manualRecipient;
+    let subject = manualSubject;
+    let body = manualBody;
 
-    if (lastHourSend) {
-        await logger.log({
-            type: 'SECURITY',
-            severity: 'WARNING',
-            message: `Duplicate send attempt blocked for ${account.email}`,
-            accountId: account.id
+    if (!isTest) {
+        const randomMsg = getRandomMessage();
+        recipient = 'warmup@ozgardenz.site';
+        subject = randomMsg.subject;
+        body = randomMsg.body;
+
+        // Warmup-specific Idempotency
+        const lastHourSend = await prisma.emailLog.findFirst({
+            where: {
+                accountId: account.id,
+                recipient,
+                createdAt: { gte: new Date(Date.now() - 5 * 60000) }
+            }
         });
-        return;
+        if (lastHourSend) return;
     }
 
     const decryptedPassword = decrypt(JSON.parse(account.password));
@@ -130,10 +146,7 @@ async function handleAdaptiveSend(account: any, adaptive: any) {
         }
     } as any);
 
-    const { subject, body } = getRandomMessage();
-    const recipient = 'warmup@ozgardenz.site';
-
-    await transporter.sendMail({
+    const info = await transporter.sendMail({
         from: account.email,
         to: recipient,
         subject,
@@ -141,34 +154,55 @@ async function handleAdaptiveSend(account: any, adaptive: any) {
         headers: { 'X-Mailer': 'MailGard-Adaptive-Engine' }
     });
 
-    await prisma.$transaction([
-        prisma.emailLog.create({
+    // Finalize logs and state
+    const diag = account.diagnostics[0];
+    const aiDecision = diag?.rawData;
+
+    if (logId) {
+        await prisma.emailLog.update({
+            where: { id: logId },
+            data: {
+                status: 'SENT',
+                smtpResponse: info.response,
+                aiDecision: aiDecision as any,
+                metadata: { messageId: info.messageId }
+            }
+        });
+    } else if (!isTest) {
+        // Create auto-warmup log
+        await prisma.emailLog.create({
             data: {
                 accountId: account.id,
                 recipient,
                 subject,
-                status: 'SENT'
+                status: 'SENT',
+                smtpResponse: info.response,
+                aiDecision: aiDecision as any,
+                workerId: WORKER_ID,
+                jobId: jobId,
+                domain: account.domain
             }
-        }),
-        prisma.warmupState.update({
+        });
+    }
+
+    if (!isTest) {
+        await prisma.warmupState.update({
             where: { accountId: account.id },
             data: {
                 currentCount: { increment: 1 },
                 lastSentAt: new Date()
             }
-        })
-    ]);
+        });
 
-    // Adaptive Scheduling: Random delay based on trust
-    if (adaptive.currentCount + 1 < adaptive.adaptiveLimit) {
-        let delay = getNaturalDelay();
-        
-        // Slower spacing for DEGRADED or NEW accounts
-        if (adaptive.trustLevel === 'DEGRADED' || adaptive.trustLevel === 'NEW') {
-            delay *= 2; 
+        // Adaptive Scheduling
+        if (adaptive.currentCount + 1 < adaptive.adaptiveLimit) {
+            let delay = getNaturalDelay();
+            if (adaptive.trustLevel === 'DEGRADED' || adaptive.trustLevel === 'NEW') delay *= 2; 
+            await addWarmupJob({ accountId: account.id, email: account.email }, delay);
         }
-
-        await addWarmupJob(account.id, delay);
-        console.log(`[Adaptive] Next send for ${account.email} in ${Math.round(delay/60000)}m (Trust: ${adaptive.trustLevel})`);
     }
 }
+
+process.on('SIGTERM', async () => {
+    await mainWorker.close();
+});
