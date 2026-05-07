@@ -1,15 +1,17 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { 
     LayoutDashboard, PlusCircle, Settings, 
-    ShieldCheck, Activity, LogOut, ChevronRight
+    ShieldCheck, Activity, LogOut, ChevronRight,
+    Menu, X
 } from 'lucide-react';
 
 export function Sidebar() {
     const pathname = usePathname();
+    const [isOpen, setIsOpen] = useState(false);
 
     const menuItems = [
         { icon: <LayoutDashboard size={20} />, label: 'Overview', path: '/' },
@@ -18,8 +20,10 @@ export function Sidebar() {
         { icon: <Settings size={20} />, label: 'Settings', path: '/settings' },
     ];
 
-    return (
-        <aside className="w-72 bg-slate-900 border-r border-slate-800 flex flex-col h-full overflow-hidden">
+    const toggleSidebar = () => setIsOpen(!isOpen);
+
+    const NavContent = () => (
+        <>
             <div className="p-8">
                 <div className="flex items-center space-x-3 text-white group cursor-pointer">
                     <div className="p-2 bg-blue-600 rounded-xl group-hover:scale-110 transition-transform shadow-lg shadow-blue-600/20">
@@ -34,6 +38,7 @@ export function Sidebar() {
                     <Link 
                         key={item.path} 
                         href={item.disabled ? '#' : item.path}
+                        onClick={() => setIsOpen(false)}
                         className={`
                             flex items-center justify-between px-4 py-3 rounded-xl transition-all group
                             ${pathname === item.path 
@@ -67,6 +72,36 @@ export function Sidebar() {
                     </div>
                 </div>
             </div>
-        </aside>
+        </>
+    );
+
+    return (
+        <>
+            {/* Mobile Toggle */}
+            <button 
+                onClick={toggleSidebar}
+                className="lg:hidden fixed top-6 right-6 z-[60] p-3 bg-blue-600 text-white rounded-2xl shadow-xl shadow-blue-600/20"
+            >
+                {isOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+
+            {/* Desktop Sidebar */}
+            <aside className="hidden lg:flex w-72 bg-slate-900 border-r border-slate-800 flex-col h-screen sticky top-0 overflow-hidden">
+                <NavContent />
+            </aside>
+
+            {/* Mobile Drawer */}
+            <div className={`
+                lg:hidden fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md transition-all duration-500
+                ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}
+            `}>
+                <aside className={`
+                    absolute left-0 top-0 bottom-0 w-80 bg-slate-900 border-r border-slate-800 flex flex-col transition-transform duration-500
+                    ${isOpen ? 'translate-x-0' : '-translate-x-full'}
+                `}>
+                    <NavContent />
+                </aside>
+            </div>
+        </>
     );
 }
