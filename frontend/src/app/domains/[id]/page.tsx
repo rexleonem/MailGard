@@ -7,7 +7,7 @@ import {
     Activity, Shield, ShieldCheck, ShieldAlert, 
     ArrowLeft, RefreshCw, AlertCircle, CheckCircle2,
     Lock, Zap, Info, Mail, Globe, Server, AlertTriangle,
-    Trash2, Pause, Play
+    Trash2, Pause, Play, TrendingUp
 } from 'lucide-react';
 import Link from 'next/link';
 
@@ -201,36 +201,45 @@ export default function DomainDetail() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 lg:gap-6">
                             <div className="p-6 bg-slate-950/50 border border-slate-800/50 rounded-3xl space-y-2 group hover:border-blue-500/20 transition-all">
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Sent Today</p>
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Adaptive Send Limit</p>
                                 <div className="flex items-baseline space-x-2">
                                     <span className="text-4xl font-black text-white">{data.warmupState?.currentCount || 0}</span>
-                                    <span className="text-slate-600 font-bold">/ {aiData.recommended_daily_limit || 0}</span>
+                                    <span className="text-slate-600 font-bold">/ {data.adaptive?.adaptiveLimit || 0}</span>
                                 </div>
                                 <div className="w-full bg-slate-900 h-2 rounded-full mt-4 overflow-hidden shadow-inner">
                                     <div 
                                         className="bg-gradient-to-r from-blue-600 to-indigo-600 h-full transition-all duration-1000 shadow-[0_0_15px_rgba(37,99,235,0.4)]" 
-                                        style={{ width: `${Math.min(100, ((data.warmupState?.currentCount || 0) / (aiData.recommended_daily_limit || 1)) * 100)}%` }}
+                                        style={{ width: `${Math.min(100, ((data.warmupState?.currentCount || 0) / (data.adaptive?.adaptiveLimit || 1)) * 100)}%` }}
                                     />
                                 </div>
                             </div>
                             
                             <div className="p-6 bg-slate-950/50 border border-slate-800/50 rounded-3xl space-y-2">
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Growth Stage</p>
-                                <p className="text-3xl font-black text-white tracking-tight">Day {data.warmupState?.dayNumber || 1}</p>
-                                <p className="text-[10px] text-blue-500 font-black uppercase tracking-widest mt-4 flex items-center">
-                                    <Zap size={10} className="mr-1" /> SAFE RAMP-UP
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Trust Level</p>
+                                <p className={`text-3xl font-black tracking-tight ${data.adaptive?.trustLevel === 'DEGRADED' ? 'text-rose-500' : 'text-white'}`}>
+                                    {data.adaptive?.trustLevel || 'NEW'}
                                 </p>
+                                <div className="flex items-center space-x-1 mt-4">
+                                    {[1, 2, 3, 4, 5].map((i) => (
+                                        <div 
+                                            key={i} 
+                                            className={`h-1 flex-1 rounded-full ${i <= ['NEW', 'LEARNING', 'STABLE', 'ELEVATED'].indexOf(data.adaptive?.trustLevel || 'NEW') + 1 ? 'bg-blue-600' : 'bg-slate-800'}`} 
+                                        />
+                                    ))}
+                                </div>
                             </div>
 
                             <div className="p-6 bg-slate-950/50 border border-slate-800/50 rounded-3xl space-y-2">
-                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Next Activity</p>
-                                <p className="text-sm font-bold text-white truncate mt-2">
-                                    {data.warmupState?.lastSentAt ? new Date(data.warmupState.lastSentAt).toLocaleTimeString() : 'Awaiting Cycle...'}
-                                </p>
-                                <div className="flex items-center space-x-1 text-[10px] text-emerald-500 font-black uppercase tracking-widest mt-4">
-                                    <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-                                    <span>SCHEDULED</span>
+                                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Reputation Trend</p>
+                                <div className="flex items-center space-x-2">
+                                    <TrendingUp size={24} className={data.adaptive?.trustTrend >= 0 ? 'text-emerald-500' : 'text-rose-500'} style={{ transform: `rotate(${data.adaptive?.trustTrend * -45}deg)` }} />
+                                    <p className="text-3xl font-black text-white tracking-tight">
+                                        {data.adaptive?.trustTrend > 0 ? '+' : ''}{Math.round(data.adaptive?.trustTrend * 100)}%
+                                    </p>
                                 </div>
+                                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest mt-4">
+                                    Momentum: {data.adaptive?.trustTrend >= 0 ? 'ACCELERATING' : 'DEGRADING'}
+                                </p>
                             </div>
                         </div>
 

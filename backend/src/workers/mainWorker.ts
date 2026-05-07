@@ -5,96 +5,67 @@ import prisma from '../lib/prisma';
 import { decrypt } from '../lib/encryption';
 import { getRandomMessage } from '../lib/messages';
 import { addWarmupJob } from '../queues/warmupQueue';
+import { calculateAdaptiveState, getNaturalDelay } from '../lib/trustEngine';
 
 const connection = new IORedis(process.env.REDIS_URL || 'redis://localhost:6379', {
     maxRetriesPerRequest: null
 });
 
 /**
- * PRE-EXECUTION SAFETY GATE
- * Verifies domain health, AI risk, and limits before any action.
+ * ADVANCED SAFETY GATE
+ * Consumes Adaptive Trust Model + AI Risk + System Rules
  */
 async function validateSafety(accountId: string) {
+    const adaptive = await calculateAdaptiveState(accountId);
+    if (!adaptive) return { safe: false, reason: 'TRUST_STATE_MISSING' };
+
     const account = await prisma.account.findUnique({
         where: { id: accountId },
-        include: { 
-            warmupState: true,
-            diagnostics: { orderBy: { createdAt: 'desc' }, take: 1 }
-        }
+        include: { diagnostics: { orderBy: { createdAt: 'desc' }, take: 1 } }
     });
 
     if (!account) return { safe: false, reason: 'ACCOUNT_NOT_FOUND' };
-    if (account.status !== 'ACTIVE') return { safe: false, reason: `ACCOUNT_STATUS_${account.status}` };
+    if (account.status !== 'ACTIVE') return { safe: false, reason: `STATUS_${account.status}` };
+
+    // Cooldown check
+    if (adaptive.cooldownUntil && new Date() < new Date(adaptive.cooldownUntil)) {
+        return { safe: false, reason: 'COOLDOWN_ACTIVE' };
+    }
+
+    // AI & Adaptive Limit check
+    if (adaptive.currentCount >= adaptive.adaptiveLimit) {
+        return { safe: false, reason: 'ADAPTIVE_LIMIT_REACHED' };
+    }
 
     const diag = account.diagnostics[0];
     const aiData = (diag?.rawData as any) || {};
-    
-    if (aiData.risk === 'HIGH_RISK' || aiData.action === 'PAUSE') {
-        return { safe: false, reason: 'AI_RISK_BLOCK' };
-    }
+    if (aiData.risk === 'HIGH_RISK') return { safe: false, reason: 'AI_HIGH_RISK_BLOCK' };
 
-    if (account.warmupState && account.warmupState.currentCount >= (aiData.recommended_daily_limit || 0)) {
-        return { safe: false, reason: 'DAILY_LIMIT_REACHED' };
-    }
-
-    return { safe: true, account };
+    return { safe: true, account, adaptive };
 }
 
 export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
     const { type, accountId } = job.data;
 
-    console.log(`[Worker] Processing ${type} for ${accountId}...`);
-
-    // 1. SAFETY VALIDATION
     const safety = await validateSafety(accountId);
-    if (!safety.safe && type !== 'DIAGNOSTICS_RUN' && type !== 'AI_RECHECK') {
-        console.warn(`[Worker] Job ${type} aborted: ${safety.reason}`);
+    if (!safety.safe && type === 'WARM_SEND') {
+        console.warn(`[Adaptive Worker] ${type} blocked for ${accountId}: ${safety.reason}`);
         return;
     }
 
-    const { account } = safety;
+    const { account, adaptive } = safety;
 
     try {
-        switch (type) {
-            case 'WARM_SEND':
-                await handleWarmSend(account!);
-                break;
-            case 'DIAGNOSTICS_RUN':
-                // Handled by accountController logic or separate worker
-                break;
-            case 'AI_RECHECK':
-                // Re-trigger Gemini analysis
-                break;
-            default:
-                console.warn(`[Worker] Unknown job type: ${type}`);
+        if (type === 'WARM_SEND') {
+            await handleAdaptiveSend(account!, adaptive!);
         }
     } catch (error: any) {
-        console.error(`[Worker] Job ${type} failed:`, error.message);
-        
-        // Handle recoverable vs non-recoverable errors
-        const isRecoverable = error.code === 'ETIMEDOUT' || error.code === 'ECONNRESET';
-        
-        if (!isRecoverable) {
-            await prisma.account.update({
-                where: { id: accountId },
-                data: { status: 'PAUSED' }
-            });
-            console.warn(`[Worker] Critical failure. Domain ${accountId} paused.`);
-            throw new Error(`Non-recoverable failure: ${error.message}`);
-        }
-        
-        // Recoverable errors will be retried by BullMQ automatically
-        throw error; 
+        console.error(`[Adaptive Worker] ${type} failed:`, error.message);
+        throw error; // Let BullMQ handle retries with backoff
     }
-}, { 
-    connection,
-    limiter: { max: 10, duration: 1000 } // Throttle to 10 jobs per second system-wide
-});
+}, { connection });
 
-/**
- * Execution Logic for WARM_SEND
- */
-async function handleWarmSend(account: any) {
+async function handleAdaptiveSend(account: any, adaptive: any) {
     const decryptedPassword = decrypt(JSON.parse(account.password));
     const transporter = nodemailer.createTransport({
         host: account.smtpHost,
@@ -114,7 +85,7 @@ async function handleWarmSend(account: any) {
         to: recipient,
         subject,
         text: body,
-        headers: { 'X-Mailer': 'MailGard-Queue-Worker' }
+        headers: { 'X-Mailer': 'MailGard-Adaptive-Engine' }
     });
 
     await prisma.$transaction([
@@ -135,11 +106,16 @@ async function handleWarmSend(account: any) {
         })
     ]);
 
-    // Reschedule next send if limits allow
-    const diag = account.diagnostics[0];
-    const aiData = (diag?.rawData as any) || {};
-    if (account.warmupState.currentCount + 1 < aiData.recommended_daily_limit) {
-        const nextDelay = Math.floor(Math.random() * (3600000 * 4 - 3600000) + 3600000);
-        await addWarmupJob(account.id, nextDelay);
+    // Adaptive Scheduling: Random delay based on trust
+    if (adaptive.currentCount + 1 < adaptive.adaptiveLimit) {
+        let delay = getNaturalDelay();
+        
+        // Slower spacing for DEGRADED or NEW accounts
+        if (adaptive.trustLevel === 'DEGRADED' || adaptive.trustLevel === 'NEW') {
+            delay *= 2; 
+        }
+
+        await addWarmupJob(account.id, delay);
+        console.log(`[Adaptive] Next send for ${account.email} in ${Math.round(delay/60000)}m (Trust: ${adaptive.trustLevel})`);
     }
 }

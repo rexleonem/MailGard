@@ -52,14 +52,20 @@ model Diagnostic {
 }
 
 model WarmupState {
-  id          String   @id @default(cuid())
-  accountId   String   @unique
-  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  dailyLimit  Int      @default(5)
-  currentCount Int     @default(0)
-  dayNumber   Int      @default(1)
-  lastSentAt  DateTime?
-  updatedAt   DateTime @updatedAt
+  id           String    @id @default(cuid())
+  accountId    String    @unique
+  account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  dayNumber    Int       @default(1)
+  currentCount Int       @default(0)
+  lastSentAt   DateTime?
+  
+  // Adaptive Intelligence Fields
+  trustLevel   String    @default("NEW") // NEW, LEARNING, STABLE, ELEVATED, DEGRADED
+  trustTrend   Float     @default(0.0)   // -1.0 to 1.0
+  cooldownUntil DateTime?
+  anomalyDetected Boolean @default(false)
+  
+  updatedAt    DateTime  @updatedAt
 }
 
 enum LogStatus {

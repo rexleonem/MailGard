@@ -222,7 +222,12 @@ export const getAccountDetail = async (req: AuthRequest, res: Response) => {
             }
         });
         if (!account) return res.status(404).json({ error: 'Account not found' });
-        res.json(account);
+        
+        // Calculate adaptive state for the UI
+        const { calculateAdaptiveState } = require('../lib/trustEngine');
+        const adaptive = await calculateAdaptiveState(account.id);
+        
+        res.json({ ...account, adaptive });
     } catch (error) {
         res.status(500).json({ error: 'Failed to fetch account detail' });
     }
