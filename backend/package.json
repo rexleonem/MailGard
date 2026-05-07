@@ -28,13 +28,15 @@
     "dns-packet": "^5.6.1",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "express-rate-limit": "^7.5.0",
     "helmet": "^8.1.0",
     "ioredis": "^5.10.1",
     "jsonwebtoken": "^9.0.3",
     "node-cron": "^3.0.3",
     "nodemailer": "^8.0.7",
     "pg": "^8.20.0",
-    "prisma": "^7.8.0"
+    "prisma": "^7.8.0",
+    "zod": "^3.24.1"
   },
   "devDependencies": {
     "@prisma/config": "^7.8.0",

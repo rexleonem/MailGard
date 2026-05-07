@@ -1,4 +1,5 @@
-import prisma from './prisma';
+import _prisma from './prisma';
+const prisma = _prisma as any;
 
 export type EventType = 'SMTP' | 'QUEUE' | 'DIAGNOSTICS' | 'AI' | 'ADAPTIVE' | 'SECURITY';
 export type Severity = 'INFO' | 'WARNING' | 'ERROR' | 'CRITICAL';

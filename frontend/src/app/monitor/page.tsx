@@ -18,16 +18,24 @@ export default function Monitor() {
 
     const fetchData = async () => {
         try {
-            const [statsRes, eventsRes, alertsRes] = await Promise.all([
+            const results = await Promise.allSettled([
                 api.get('/accounts/monitor/stats'),
                 api.get('/accounts/monitor/events'),
                 api.get('/accounts/monitor/alerts')
             ]);
-            setStats(statsRes.data);
-            setEvents(eventsRes.data);
-            setAlerts(alertsRes.data);
+
+            if (results[0].status === 'fulfilled') setStats(results[0].value.data);
+            if (results[1].status === 'fulfilled') setEvents(results[1].value.data);
+            if (results[2].status === 'fulfilled') setAlerts(results[2].value.data);
+            
+            // Log failures for debugging
+            results.forEach((res, i) => {
+                if (res.status === 'rejected') {
+                    console.error(`Monitor: Fetch ${i} failed:`, res.reason);
+                }
+            });
         } catch (err) {
-            console.error(err);
+            console.error('Monitor: fetchData critical error:', err);
         } finally {
             setLoading(false);
         }
@@ -75,10 +83,10 @@ export default function Monitor() {
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-                <StatCard label="Active Tasks" value={stats.active} icon={<Zap size={20} />} color="text-blue-500" />
-                <StatCard label="Waiting" value={stats.waiting} icon={<Clock size={20} />} color="text-amber-500" />
-                <StatCard label="Completed" value={stats.completed} icon={<CheckCircle2 size={20} />} color="text-emerald-500" />
-                <StatCard label="Failed" value={stats.failed} icon={<XCircle size={20} />} color="text-rose-500" />
+                <StatCard label="Active Tasks" value={stats?.active ?? 0} icon={<Zap size={20} />} color="text-blue-500" />
+                <StatCard label="Waiting" value={stats?.waiting ?? 0} icon={<Clock size={20} />} color="text-amber-500" />
+                <StatCard label="Completed" value={stats?.completed ?? 0} icon={<CheckCircle2 size={20} />} color="text-emerald-500" />
+                <StatCard label="Failed" value={stats?.failed ?? 0} icon={<XCircle size={20} />} color="text-rose-500" />
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -99,21 +107,30 @@ export default function Monitor() {
                         </div>
 
                         <div className="space-y-3 relative z-10 max-h-[600px] overflow-y-auto pr-4 custom-scrollbar">
-                            {events.map((event, i) => (
-                                <div key={i} className="p-5 bg-slate-950/50 border border-slate-800/50 rounded-2xl flex items-start space-x-4 group hover:border-slate-700 transition-all">
-                                    <SeverityIcon severity={event.severity} />
-                                    <div className="flex-1 space-y-1">
-                                        <div className="flex items-center justify-between">
-                                            <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{event.type}</span>
-                                            <span className="text-[10px] font-bold text-slate-600 uppercase">{new Date(event.createdAt).toLocaleTimeString()}</span>
-                                        </div>
-                                        <p className="text-sm font-bold text-white group-hover:text-blue-200 transition-colors">{event.message}</p>
-                                        {event.accountId && (
-                                            <p className="text-[10px] text-slate-500 font-medium">Domain ID: {event.accountId}</p>
-                                        )}
-                                    </div>
+                            {events.length === 0 ? (
+                                <div className="text-center py-20 bg-slate-950/30 rounded-3xl border border-dashed border-slate-800">
+                                    <Terminal size={48} className="text-slate-800 mx-auto mb-4" />
+                                    <p className="text-sm font-bold text-slate-500 uppercase tracking-widest">No events recorded in stream</p>
                                 </div>
-                            ))}
+                            ) : (
+                                events.map((event, i) => (
+                                    <div key={i} className="p-5 bg-slate-950/50 border border-slate-800/50 rounded-2xl flex items-start space-x-4 group hover:border-slate-700 transition-all">
+                                        <SeverityIcon severity={event.severity} />
+                                        <div className="flex-1 space-y-1">
+                                            <div className="flex items-center justify-between">
+                                                <span className="text-[10px] font-black text-blue-500 uppercase tracking-widest">{event.type}</span>
+                                                <span className="text-[10px] font-bold text-slate-600 uppercase">
+                                                    {event.createdAt ? new Date(event.createdAt).toLocaleTimeString() : 'N/A'}
+                                                </span>
+                                            </div>
+                                            <p className="text-sm font-bold text-white group-hover:text-blue-200 transition-colors">{event.message}</p>
+                                            {event.accountId && (
+                                                <p className="text-[10px] text-slate-500 font-medium">Domain ID: {event.accountId}</p>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))
+                            )}
                         </div>
                     </div>
                 </div>

@@ -1,8 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-    // Use relative path for production to avoid CORS and environment variable issues
-    baseURL: '/api'
+    baseURL: process.env.NEXT_PUBLIC_API_URL || '/api'
 });
 
 api.interceptors.request.use((config) => {

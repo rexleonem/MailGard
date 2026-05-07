@@ -190,33 +190,38 @@ async function runDiagnostics(accountId: string, domain: string, smtpHost: strin
 
 export const getSystemEvents = async (req: AuthRequest, res: Response) => {
     try {
+        console.log(`[DEBUG] getSystemEvents: Fetching for userId: ${req.userId}`);
         const events = await prisma.systemEvent.findMany({
             where: { userId: req.userId },
             orderBy: { createdAt: 'desc' },
             take: 100
         });
+        console.log(`[DEBUG] getSystemEvents: Found ${events.length} events`);
         res.json(events);
-    } catch (error) {
-        console.error('getSystemEvents failed:', error);
-        res.status(500).json({ error: 'Failed to fetch events' });
+    } catch (error: any) {
+        console.error('[ERROR] getSystemEvents failed:', error);
+        res.status(500).json({ error: 'Failed to fetch events', details: error.message });
     }
 };
 
 export const getAlerts = async (req: AuthRequest, res: Response) => {
     try {
+        console.log(`[DEBUG] getAlerts: Fetching...`);
         const alerts = await prisma.alert.findMany({
             where: { resolved: false },
             orderBy: { createdAt: 'desc' }
         });
+        console.log(`[DEBUG] getAlerts: Found ${alerts.length} alerts`);
         res.json(alerts);
-    } catch (error) {
-        console.error('getAlerts failed:', error);
-        res.status(500).json({ error: 'Failed to fetch alerts' });
+    } catch (error: any) {
+        console.error('[ERROR] getAlerts failed:', error);
+        res.status(500).json({ error: 'Failed to fetch alerts', details: error.message });
     }
 };
 
 export const getQueueStats = async (req: Request, res: Response) => {
     try {
+        console.log(`[DEBUG] getQueueStats: Fetching counts...`);
         const [waiting, active, completed, failed] = await Promise.all([
             mailgardQueue.getWaitingCount(),
             mailgardQueue.getActiveCount(),
@@ -224,6 +229,7 @@ export const getQueueStats = async (req: Request, res: Response) => {
             mailgardQueue.getFailedCount()
         ]);
 
+        console.log(`[DEBUG] getQueueStats: W:${waiting} A:${active} C:${completed} F:${failed}`);
         res.json({
             waiting,
             active,
@@ -231,9 +237,9 @@ export const getQueueStats = async (req: Request, res: Response) => {
             failed,
             workerStatus: 'ONLINE'
         });
-    } catch (error) {
-        console.error('getQueueStats failed:', error);
-        res.status(500).json({ error: 'Failed to fetch queue stats' });
+    } catch (error: any) {
+        console.error('[ERROR] getQueueStats failed:', error);
+        res.status(500).json({ error: 'Failed to fetch queue stats', details: error.message });
     }
 };
 
@@ -259,6 +265,7 @@ export const refreshDiagnostics = async (req: AuthRequest, res: Response) => {
 
 export const getAccounts = async (req: AuthRequest, res: Response) => {
     try {
+        console.log(`[DEBUG] getAccounts: Fetching for userId: ${req.userId}`);
         const accounts = await prisma.account.findMany({
             where: { userId: req.userId },
             include: { 
@@ -266,10 +273,17 @@ export const getAccounts = async (req: AuthRequest, res: Response) => {
                 warmupState: true
             }
         });
+        console.log(`[DEBUG] getAccounts: Found ${accounts.length} accounts`);
         res.json(accounts);
-    } catch (error) {
-        console.error('getAccounts failed:', error);
-        res.status(500).json({ error: 'Failed to fetch accounts' });
+    } catch (error: any) {
+        console.error('[ERROR] getAccounts failed:', error);
+        await logger.log({
+            type: 'SECURITY',
+            severity: 'ERROR',
+            message: `getAccounts failed: ${error.message}`,
+            userId: req.userId
+        });
+        res.status(500).json({ error: 'Failed to fetch accounts', details: error.message });
     }
 };
 
@@ -328,23 +342,30 @@ export const sendTestEmail = async (req: AuthRequest, res: Response) => {
     try {
         const { id } = req.params;
         const { recipient, subject, body } = req.body;
+        console.log(`[DEBUG] sendTestEmail: From ${id} to ${recipient}`);
 
         const account = await prisma.account.findFirst({
             where: { id: String(id), userId: req.userId } as any,
             include: { diagnostics: { take: 1, orderBy: { createdAt: 'desc' } } }
         });
 
-        if (!account) return res.status(404).json({ error: 'Account not found' });
+        if (!account) {
+            console.log(`[DEBUG] sendTestEmail: Account not found for ${id}`);
+            return res.status(404).json({ error: 'Account not found' });
+        }
         
         if (account.status === 'RISK_BLOCKED') {
+            console.log(`[DEBUG] sendTestEmail: Account BLOCKED`);
             return res.status(403).json({ error: 'Account is blocked due to high risk' });
         }
 
         const diag = (account as any).diagnostics[0];
         if (!diag || !diag.spf || !diag.dkim) {
+            console.log(`[DEBUG] sendTestEmail: Auth failure (SPF/DKIM)`);
             return res.status(403).json({ error: 'Domain authentication failed. Cannot send.' });
         }
 
+        console.log(`[DEBUG] sendTestEmail: Creating log and queueing job...`);
         const emailLog = await prisma.emailLog.create({
             data: {
                 accountId: account.id,
@@ -365,10 +386,11 @@ export const sendTestEmail = async (req: AuthRequest, res: Response) => {
             logId: emailLog.id
         });
 
+        console.log(`[DEBUG] sendTestEmail: Success. LogId: ${emailLog.id}`);
         res.json({ message: 'Test email queued', logId: emailLog.id });
-    } catch (error) {
-        console.error('Test send failed:', error);
-        res.status(500).json({ error: 'Failed to queue test email' });
+    } catch (error: any) {
+        console.error('[ERROR] sendTestEmail failed:', error);
+        res.status(500).json({ error: 'Failed to queue test email', details: error.message });
     }
 };
 

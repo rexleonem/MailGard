@@ -9,6 +9,7 @@ import {
     Eye, Edit3, Activity
 } from 'lucide-react';
 import { toast } from 'react-hot-toast';
+import Link from 'next/link';
 
 export default function TestSendPage() {
     const [accounts, setAccounts] = useState<any[]>([]);
@@ -29,12 +30,14 @@ export default function TestSendPage() {
     const fetchAccounts = async () => {
         try {
             const { data } = await api.get('/accounts');
+            console.log('TestSendPage: Fetched accounts:', data);
             // Filter only verified and non-blocked accounts
             const filtered = data.filter((a: any) => 
                 a.status !== 'RISK_BLOCKED' && 
                 a.diagnostics?.[0]?.spf && 
                 a.diagnostics?.[0]?.dkim
             );
+            console.log('TestSendPage: Filtered accounts:', filtered);
             setAccounts(filtered);
             if (filtered.length > 0) setSelectedAccount(filtered[0]);
         } catch (error) {
@@ -106,33 +109,41 @@ export default function TestSendPage() {
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-3xl rounded-full" />
                         <label className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-4 block">Select SMTP Account</label>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {accounts.map((acc) => (
-                                <button
-                                    key={acc.id}
-                                    onClick={() => setSelectedAccount(acc)}
-                                    className={`p-6 rounded-3xl border transition-all text-left group relative overflow-hidden ${
-                                        selectedAccount?.id === acc.id 
-                                            ? 'bg-blue-600/10 border-blue-600 shadow-lg shadow-blue-600/10' 
-                                            : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
-                                    }`}
-                                >
-                                    <div className="flex items-center space-x-3 mb-2">
-                                        <div className={`p-2 rounded-xl ${selectedAccount?.id === acc.id ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}>
-                                            <Mail size={16} />
+                            {accounts.length === 0 && !loading ? (
+                                <div className="col-span-full py-12 text-center bg-slate-950/50 rounded-3xl border border-dashed border-slate-800">
+                                    <AlertTriangle size={32} className="text-amber-500/20 mx-auto mb-2" />
+                                    <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">No verified SMTP accounts found</p>
+                                    <Link href="/accounts" className="text-blue-500 text-[10px] font-black uppercase mt-2 block hover:underline">Connect an account</Link>
+                                </div>
+                            ) : (
+                                accounts.map((acc) => (
+                                    <button
+                                        key={acc.id}
+                                        onClick={() => setSelectedAccount(acc)}
+                                        className={`p-6 rounded-3xl border transition-all text-left group relative overflow-hidden ${
+                                            selectedAccount?.id === acc.id 
+                                                ? 'bg-blue-600/10 border-blue-600 shadow-lg shadow-blue-600/10' 
+                                                : 'bg-slate-950/50 border-slate-800 hover:border-slate-700'
+                                        }`}
+                                    >
+                                        <div className="flex items-center space-x-3 mb-2">
+                                            <div className={`p-2 rounded-xl ${selectedAccount?.id === acc.id ? 'bg-blue-600 text-white' : 'bg-slate-900 text-slate-500'}`}>
+                                                <Mail size={16} />
+                                            </div>
+                                            <span className={`font-bold truncate ${selectedAccount?.id === acc.id ? 'text-white' : 'text-slate-400'}`}>
+                                                {acc.email}
+                                            </span>
                                         </div>
-                                        <span className={`font-bold truncate ${selectedAccount?.id === acc.id ? 'text-white' : 'text-slate-400'}`}>
-                                            {acc.email}
-                                        </span>
-                                    </div>
-                                    <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
-                                        <span>{acc.domain}</span>
-                                        <div className="flex items-center text-emerald-500">
-                                            <ShieldCheck size={10} className="mr-1" />
-                                            VERIFIED
+                                        <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                            <span>{acc.domain}</span>
+                                            <div className="flex items-center text-emerald-500">
+                                                <ShieldCheck size={10} className="mr-1" />
+                                                VERIFIED
+                                            </div>
                                         </div>
-                                    </div>
-                                </button>
-                            ))}
+                                    </button>
+                                ))
+                            )}
                         </div>
                     </div>
 
