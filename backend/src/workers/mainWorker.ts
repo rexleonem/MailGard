@@ -89,9 +89,36 @@ export const mainWorker = new Worker('mailgard-queue', async (job: Job) => {
         });
         throw error; // Let BullMQ handle retries with backoff
     }
-}, { connection });
+}, { 
+    connection,
+    lockDuration: 30000,
+    stalledInterval: 30000
+});
+
+// Graceful Shutdown
+process.on('SIGTERM', async () => {
+    await mainWorker.close();
+});
 
 async function handleAdaptiveSend(account: any, adaptive: any) {
+    // 1. Idempotency & Frequency Check (Safety)
+    const lastHourSend = await prisma.emailLog.findFirst({
+        where: {
+            accountId: account.id,
+            createdAt: { gte: new Date(Date.now() - 5 * 60000) } // 5 minute window for deduplication
+        }
+    });
+
+    if (lastHourSend) {
+        await logger.log({
+            type: 'SECURITY',
+            severity: 'WARNING',
+            message: `Duplicate send attempt blocked for ${account.email}`,
+            accountId: account.id
+        });
+        return;
+    }
+
     const decryptedPassword = decrypt(JSON.parse(account.password));
     const transporter = nodemailer.createTransport({
         host: account.smtpHost,

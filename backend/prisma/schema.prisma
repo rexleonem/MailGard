@@ -69,22 +69,34 @@ model WarmupState {
 }
 
 enum LogStatus {
+  QUEUED
+  PROCESSING
   SENT
   FAILED
+  RETRYING
   BOUNCED
+  BLOCKED
 }
 
 model EmailLog {
-  id          String    @id @default(cuid())
-  accountId   String
-  account     Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
-  recipient   String
-  subject     String
-  status      LogStatus
-  error       String?
-  aiDecision  Json?
-  metadata    Json?     // For tracking headers, timing, etc.
-  createdAt   DateTime  @default(now())
+  id           String    @id @default(cuid())
+  accountId    String
+  account      Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  recipient    String
+  subject      String
+  status       LogStatus @default(SENT)
+  error        String?
+  aiDecision   Json?
+  metadata     Json?     
+  
+  // Execution Data
+  workerId     String?
+  jobId        String?
+  smtpResponse String?
+  retryCount   Int       @default(0)
+  domain       String?
+  
+  createdAt    DateTime  @default(now())
 }
 
 model SystemEvent {

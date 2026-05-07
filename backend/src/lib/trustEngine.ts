@@ -1,4 +1,5 @@
 import prisma from './prisma';
+import { logger } from './logger';
 
 export type TrustLevel = 'NEW' | 'LEARNING' | 'STABLE' | 'ELEVATED' | 'DEGRADED';
 
@@ -46,28 +47,47 @@ export async function calculateAdaptiveState(accountId: string) {
         newTrustTrend = Math.max(-1.0, newTrustTrend - 0.5);
     }
 
-    // 3. TRUST EVOLUTION
-    if (failureRate < 0.05 && logs.length >= 20) {
-        newTrustTrend = Math.min(1.0, newTrustTrend + 0.1);
-        if (newTrustTrend > 0.5 && newTrustLevel === 'LEARNING') newTrustLevel = 'STABLE';
-        if (newTrustTrend > 0.8 && newTrustLevel === 'STABLE') newTrustLevel = 'ELEVATED';
-    } else if (failureRate > 0.1) {
-        newTrustTrend = Math.max(-1.0, newTrustTrend - 0.2);
+    // 3. CRITICAL AUTHENTICATION ENFORCEMENT
+    const authFailed = !diag?.spf || !diag?.dkim || !diag?.dmarc;
+    if (authFailed) {
+        await logger.log({
+            type: 'SECURITY',
+            severity: 'CRITICAL',
+            message: `Authentication failure detected for ${account.email}. SPF/DKIM/DMARC must pass.`,
+            accountId
+        });
+        
+        await prisma.account.update({
+            where: { id: accountId },
+            data: { status: 'RISK_BLOCKED' }
+        });
+
+        newTrustLevel = 'DEGRADED';
+        anomalyDetected = true;
     }
 
-    // 4. CALCULATE ADAPTIVE LIMIT
+    // 4. TRUST EVOLUTION
+    if (!authFailed) {
+        if (failureRate < 0.05 && logs.length >= 20) {
+            newTrustTrend = Math.min(1.0, newTrustTrend + 0.1);
+            if (newTrustTrend > 0.5 && newTrustLevel === 'LEARNING') newTrustLevel = 'STABLE';
+            if (newTrustTrend > 0.8 && newTrustLevel === 'STABLE') newTrustLevel = 'ELEVATED';
+        } else if (failureRate > 0.1) {
+            newTrustTrend = Math.max(-1.0, newTrustTrend - 0.2);
+            if (newTrustTrend < -0.5) newTrustLevel = 'DEGRADED';
+        }
+    }
+
+    // 5. CALCULATE ADAPTIVE LIMIT
     let adaptiveLimit = aiData.recommended_daily_limit || 0;
     
-    // Adjust based on trust level
     if (newTrustLevel === 'NEW') adaptiveLimit = Math.min(adaptiveLimit, 10);
     if (newTrustLevel === 'DEGRADED') adaptiveLimit = Math.floor(adaptiveLimit * 0.5);
     if (anomalyDetected) adaptiveLimit = Math.min(adaptiveLimit, 5);
 
-    // Apply scaling factor based on trend
-    const trendMultiplier = 1 + (newTrustTrend * 0.2); // +/- 20%
+    const trendMultiplier = 1 + (newTrustTrend * 0.2);
     adaptiveLimit = Math.floor(adaptiveLimit * trendMultiplier);
 
-    // 5. UPDATE STATE
     const updatedState = await prisma.warmupState.update({
         where: { accountId },
         data: {
@@ -87,6 +107,5 @@ export async function calculateAdaptiveState(accountId: string) {
 }
 
 export function getNaturalDelay() {
-    // Return a random delay between 1 and 4 hours in ms
     return Math.floor(Math.random() * (4 * 3600000 - 3600000) + 3600000);
 }

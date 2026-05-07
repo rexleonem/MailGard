@@ -8,12 +8,28 @@ import { analyzeRisk } from '../lib/gemini';
 import { addWarmupJob, mailgardQueue } from '../queues/warmupQueue';
 import { logger } from '../lib/logger';
 import { calculateAdaptiveState } from '../lib/trustEngine';
+import { z } from 'zod';
+
+const CreateAccountSchema = z.object({
+    email: z.string().email(),
+    smtpHost: z.string().min(1),
+    smtpPort: z.any(),
+    password: z.string().min(1)
+});
 
 export const createAccount = async (req: AuthRequest, res: Response) => {
     try {
-        const { email, smtpHost, smtpPort, password } = req.body;
+        const validated = CreateAccountSchema.parse(req.body);
+        const { email, smtpHost, smtpPort, password } = validated;
         const domain = email.split('@')[1];
         const port = parseInt(smtpPort);
+
+        await logger.log({
+            type: 'SECURITY',
+            severity: 'INFO',
+            message: `Account creation attempt for ${email}`,
+            userId: req.userId
+        });
 
         // STEP 1: SMTP Verification Gate (MANDATORY)
         const transporter = nodemailer.createTransport({

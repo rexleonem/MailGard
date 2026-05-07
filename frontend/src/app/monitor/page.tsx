@@ -119,6 +119,25 @@ export default function Monitor() {
                 </div>
 
                 <div className="space-y-8">
+                    {/* Security & Integrity Status */}
+                    <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 space-y-6 shadow-2xl relative overflow-hidden">
+                        <div className="absolute top-0 right-0 w-32 h-32 bg-emerald-500/5 blur-3xl rounded-full" />
+                        <h3 className="text-lg font-black text-white flex items-center space-x-2 relative z-10">
+                            <ShieldCheck size={18} className="text-emerald-500" />
+                            <span>Security & Integrity</span>
+                        </h3>
+                        <div className="space-y-4 relative z-10">
+                            <SecurityToggle label="API Rate Limiting" active={true} />
+                            <SecurityToggle label="AI Schema Validation" active={true} />
+                            <SecurityToggle label="At-Rest Encryption" active={true} />
+                            <SecurityToggle label="Idempotency Locking" active={true} />
+                        </div>
+                        <div className="pt-4 border-t border-slate-800 flex items-center justify-between">
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest">Auth Guard</p>
+                            <span className="px-2 py-0.5 bg-emerald-500/10 text-emerald-500 text-[10px] font-black rounded-md">HARDENED</span>
+                        </div>
+                    </div>
+
                     {/* Infrastructure Health */}
                     <div className="bg-slate-900 border border-slate-800 rounded-[2.5rem] p-8 space-y-6 shadow-2xl relative overflow-hidden">
                         <div className="absolute top-0 right-0 w-32 h-32 bg-blue-600/5 blur-3xl rounded-full" />
@@ -190,6 +209,17 @@ function LoadIndicator({ label, value, unit = '%' }: any) {
                     className="bg-blue-600 h-full transition-all duration-1000 shadow-[0_0_10px_rgba(37,99,235,0.4)]" 
                     style={{ width: `${value}%` }}
                 />
+            </div>
+        </div>
+    );
+}
+
+function SecurityToggle({ label, active }: { label: string, active: boolean }) {
+    return (
+        <div className="flex items-center justify-between">
+            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{label}</span>
+            <div className={`w-8 h-4 rounded-full relative transition-colors ${active ? 'bg-emerald-500/20' : 'bg-slate-800'}`}>
+                <div className={`absolute top-1 w-2 h-2 rounded-full transition-all ${active ? 'bg-emerald-500 left-5' : 'bg-slate-600 left-1'}`} />
             </div>
         </div>
     );

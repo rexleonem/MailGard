@@ -1,7 +1,27 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { z } from 'zod';
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 const model = genAI.getGenerativeModel({ model: "gemini-pro" });
+
+const RiskOutputSchema = z.object({
+    risk: z.enum(['SAFE', 'CAUTION', 'HIGH_RISK']),
+    score: z.number().min(0).max(100),
+    recommended_daily_limit: z.number().min(0).max(2000),
+    action: z.enum(['PROCEED', 'SLOW_DOWN', 'PAUSE']),
+    reason: z.string()
+});
+
+export type RiskOutput = z.infer<typeof RiskOutputSchema> & { isOverridden?: boolean };
+
+const CONSERVATIVE_FALLBACK: RiskOutput = {
+    risk: 'CAUTION',
+    score: 40,
+    recommended_daily_limit: 5,
+    action: 'SLOW_DOWN',
+    reason: "AI engine unavailable or response invalid. Applied conservative fallback rules.",
+    isOverridden: true
+};
 
 export interface RiskInput {
     domain: string;
@@ -12,15 +32,6 @@ export interface RiskInput {
     bounceRate?: number;
     sendVolume?: number;
     systemState?: string;
-}
-
-export interface RiskOutput {
-    risk: 'SAFE' | 'CAUTION' | 'HIGH_RISK';
-    score: number;
-    recommended_daily_limit: number;
-    action: 'PROCEED' | 'SLOW_DOWN' | 'PAUSE';
-    reason: string;
-    isOverridden?: boolean;
 }
 
 export async function analyzeRisk(input: RiskInput): Promise<RiskOutput> {
@@ -66,32 +77,21 @@ export async function analyzeRisk(input: RiskInput): Promise<RiskOutput> {
         const result = await model.generateContent(prompt);
         const responseText = result.response.text();
         
-        // Find JSON block if AI included markdown
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
         if (!jsonMatch) throw new Error("No JSON found in AI response");
         
-        const aiDecision: RiskOutput = JSON.parse(jsonMatch[0]);
+        const parsed = JSON.parse(jsonMatch[0]);
+        const aiDecision = RiskOutputSchema.parse(parsed);
 
-        // 2. Output Validation Layer
-        if (!['SAFE', 'CAUTION', 'HIGH_RISK'].includes(aiDecision.risk)) aiDecision.risk = 'CAUTION';
-        if (typeof aiDecision.score !== 'number') aiDecision.score = 50;
-        if (typeof aiDecision.recommended_daily_limit !== 'number') aiDecision.recommended_daily_limit = 0;
-        if (!['PROCEED', 'SLOW_DOWN', 'PAUSE'].includes(aiDecision.action)) aiDecision.action = 'PAUSE';
-        
         // Safety cap for recommended limit
-        if (aiDecision.recommended_daily_limit > 1000) aiDecision.recommended_daily_limit = 1000;
+        if (aiDecision.recommended_daily_limit > 1000) {
+            aiDecision.recommended_daily_limit = 1000;
+        }
 
         return { ...aiDecision, isOverridden: false };
 
     } catch (error) {
-        console.error("Gemini analysis failed, falling back to rules:", error);
-        return {
-            risk: 'CAUTION',
-            score: 40,
-            recommended_daily_limit: 5,
-            action: 'SLOW_DOWN',
-            reason: "AI engine unavailable. Applied conservative fallback rules.",
-            isOverridden: true
-        };
+        console.error("AI Safety Layer triggered fallback:", error);
+        return CONSERVATIVE_FALLBACK;
     }
 }
